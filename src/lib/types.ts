@@ -257,7 +257,11 @@ export interface ChartEntry {
   podcast: Pick<
     Podcast,
     "id" | "slug" | "title" | "subtitle" | "cover_image_url" | "status"
-  > & { primary_company_name?: string | null };
+  > & {
+    primary_company_name?: string | null;
+    rating_average?: number | null;
+    rating_count?: number | null;
+  };
 }
 
 export interface ChartBoard {

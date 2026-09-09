@@ -3,7 +3,7 @@ import type { PodcastDetail } from "@/lib/types";
 import { Card } from "@/components/ui/Card";
 import { Cover } from "@/components/ui/Cover";
 import { LinkChip } from "@/components/ui/LinkChip";
-import { RatingBadge } from "@/components/ui/RatingBadge";
+import { StarRating } from "@/components/ui/StarRating";
 import { EpisodeCardRow } from "@/components/podcast/EpisodeCardRow";
 
 export function PodcastProfile({ data }: { data: PodcastDetail }) {
@@ -50,9 +50,10 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
             ) : null}
 
             <div className="mt-6">
-              <RatingBadge
+              <StarRating
                 average={podcast.rating_average}
                 count={podcast.rating_count}
+                size="lg"
               />
             </div>
 

@@ -1,39 +1,40 @@
 import type { ChartBoard } from "@/lib/types";
-import { Card } from "@/components/ui/Card";
-import { RankedPodcastRow } from "@/components/charts/RankedPodcastRow";
+import { PosterCard } from "@/components/charts/PosterCard";
 
 export function ChartSection({ board }: { board: ChartBoard }) {
   return (
-    <section className="mt-16 sm:mt-20">
-      <div className="flex items-baseline justify-between gap-4">
-        <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
-          {board.chart.title}
-        </h2>
-        {board.chart.kind === "genre" && board.chart.genre_slug ? (
-          <span className="text-[13px] font-medium uppercase tracking-wide text-white/45">
-            {board.chart.genre_slug.replace(/-/g, " ")}
-          </span>
-        ) : null}
+    <section className="mt-14 sm:mt-16">
+      <div className="flex items-end justify-between gap-4 px-1">
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight">
+            {board.chart.title}
+          </h2>
+          {board.chart.kind === "genre" && board.chart.genre_slug ? (
+            <p className="mt-1 text-[13px] uppercase tracking-wide text-white/40">
+              {board.chart.genre_slug.replace(/-/g, " ")}
+            </p>
+          ) : (
+            <p className="mt-1 text-[13px] text-white/40">
+              Ranked catalog · tap a poster
+            </p>
+          )}
+        </div>
       </div>
-      {board.chart.description ? (
-        <p className="mt-3 text-[15px] text-white/55 max-w-xl">
-          {board.chart.description}
-        </p>
-      ) : null}
-      <Card className="mt-8 px-5 sm:px-8">
-        {board.entries.length === 0 ? (
-          <p className="py-12 text-[15px] text-white/45 text-center">
-            Rankings fill as the catalog grows.
-          </p>
-        ) : (
-          board.entries.map((entry) => (
-            <RankedPodcastRow
-              key={`${board.chart.id}-${entry.rank}-${entry.podcast.id}`}
-              entry={entry}
-            />
-          ))
-        )}
-      </Card>
+
+      {board.entries.length === 0 ? (
+        <p className="mt-8 text-[15px] text-white/45">No titles in this chart yet.</p>
+      ) : (
+        <div className="mt-6 -mx-6 sm:-mx-8 px-6 sm:px-8 overflow-x-auto pb-2 scrollbar-thin">
+          <div className="flex gap-4 sm:gap-5 min-w-min">
+            {board.entries.map((entry) => (
+              <PosterCard
+                key={`${board.chart.id}-${entry.rank}-${entry.podcast.id}`}
+                entry={entry}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

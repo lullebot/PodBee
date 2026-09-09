@@ -127,17 +127,12 @@ function boardsFromRankings(rows: ChartRankingRow[]): ChartBoard[] {
         id: row.podcast_id,
         slug: row.podcast_slug,
         title: row.podcast_title,
-        subtitle:
-          row.rating_average != null
-            ? `${row.rating_average.toFixed(1)}/10${
-                row.rating_count != null
-                  ? ` · ${row.rating_count.toLocaleString()} ratings`
-                  : ""
-              }`
-            : null,
+        subtitle: null,
         cover_image_url: row.cover_image_url,
         status: row.status,
         primary_company_name: null,
+        rating_average: row.rating_average,
+        rating_count: row.rating_count,
       },
     });
   }
