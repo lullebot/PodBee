@@ -1,0 +1,43 @@
+# PodBee starter feeds — public RSS only, one URL per line.
+# Spans Overall / Comedy / True Crime / News. Verified reachable 2026-09-09.
+# Comments are ignored. Do not add private or geo-blocked feeds.
+
+# Overall / Society / Science
+https://www.thisamericanlife.org/podcast/rss.xml
+https://feeds.simplecast.com/EmVW7VGp
+https://www.omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/a91018a4-ea4f-4130-bf55-ae270180c327/44710ecc-10bb-48d1-93c7-ae270180c33e/podcast.rss
+https://feeds.simplecast.com/kwWc0lhf
+https://feeds.npr.org/381444908/podcast.xml
+https://feeds.npr.org/510289/podcast.xml
+https://feeds.simplecast.com/BqbsxVfO
+https://feeds.simplecast.com/Y8lFbOT4
+https://rss.art19.com/how-i-built-this
+https://feeds.npr.org/510298/podcast.xml
+https://feeds.feedburner.com/themothpodcast
+https://feeds.megaphone.fm/sciencevs
+
+# Comedy
+https://feeds.npr.org/344098539/podcast.xml
+https://feeds.simplecast.com/dHoohVNH
+https://feeds.simplecast.com/hNaFxXpO
+https://rss.amperwave.net/v2/feed/audacynetwork/office-ladies
+https://feeds.simplecast.com/byb4nhvN
+https://feeds.simplecast.com/wjQvYtdl
+
+# True Crime
+https://feeds.simplecast.com/xl36XBC2
+https://feeds.simplecast.com/qm_9xx0g
+https://www.omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/bdde8bb3-169d-43b1-91d3-b24c0047969c/f450d41f-16bc-4ecd-8f6c-b24c004796e2/podcast.rss
+https://feeds.megaphone.fm/VMP7924981569
+https://feeds.acast.com/public/shows/679acff465f74095106abfaa
+https://podcastfeeds.nbcnews.com/dateline-nbc
+https://feeds.simplecast.com/GdzgJRQH
+
+# News
+https://feeds.simplecast.com/Sl5CSM3S
+https://feeds.npr.org/510318/podcast.xml
+https://feeds.npr.org/500005/podcast.xml
+https://podcasts.files.bbci.co.uk/p02nq0gn.rss
+https://audioboom.com/channels/5166624.rss
+https://feeds.npr.org/510355/podcast.xml
+https://feeds.npr.org/510333/podcast.xml
