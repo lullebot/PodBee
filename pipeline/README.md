@@ -20,11 +20,26 @@ Set these in the shell or a gitignored `.env` / `.env.local` (never commit secre
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `SUPABASE_URL` | yes | Project URL, e.g. `https://xxxx.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | yes | **service_role** key from Project Settings → API |
+| `SUPABASE_URL` | yes (writes) | Project URL, e.g. `https://xxxx.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes (writes) | **service_role** key from Project Settings → API |
 | `NEXT_PUBLIC_SUPABASE_URL` | fallback | Used only if `SUPABASE_URL` is unset |
+| `PODCAST_INDEX_API_KEY` | no | Optional. Enables 4 small trending lookups |
+| `PODCAST_INDEX_API_SECRET` | no | Optional. Pair with the key above |
 
-Do **not** put `service_role` in `NEXT_PUBLIC_*` vars or any frontend code.
+Do **not** put `service_role` or Podcast Index secrets in `NEXT_PUBLIC_*` vars or any frontend code.
+
+### Two modes
+
+1. **RSS-only (default when PI env is missing)** — ingest `feeds.txt` and any other public RSS URLs you pass. This is the supported free-tier path.
+2. **RSS + trending discovery** — if both `PODCAST_INDEX_*` vars are set, the CLI makes **four** targeted `GET /podcasts/trending` calls (`Comedy`, `True Crime`, `News`, and uncategorized overall), `max≤25` each, then RSS-fetches those feed URLs for episodes and covers.
+
+Force RSS-only even when PI credentials are present:
+
+```bash
+python -m pipeline.ingest --feeds feeds.txt --rss-only
+```
+
+**Podcast Index ToS:** do **not** scrape or crawl the entire index via the API (no full-catalog pagination, no `bytag` walk, no dump-scale loops). Weekly database dump is the bulk path and is out of scope here. Episode/cover detail always comes from each show’s public RSS.
 
 ## Run
 
@@ -38,7 +53,7 @@ Useful flags:
 
 ```bash
 # parse only — no database writes, no service_role required
-python -m pipeline.ingest --feeds feeds.txt --dry-run --limit-feeds 3
+python -m pipeline.ingest --feeds feeds.txt --dry-run --limit-feeds 3 --rss-only
 
 # keep a smaller episode window (default 80 most-recent per show)
 python -m pipeline.ingest --feeds feeds.txt --max-episodes 40

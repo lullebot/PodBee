@@ -28,7 +28,7 @@ Monochrome, extreme whitespace, massive typography, `rounded-[24px]` cards, Appl
 
 ## Data ingest (Sprint 2)
 
-RSS-first catalog loader lives in [`pipeline/`](pipeline/). It uses the **service_role** key via env and upserts podcasts, episodes, people/credits, genres, and the four home charts.
+RSS-first catalog loader lives in [`pipeline/`](pipeline/). It uses the **service_role** key via env and upserts podcasts, episodes, people/credits, genres, and the four home charts. Optional Podcast Index trending (4 small pages) is used only when `PODCAST_INDEX_*` env vars are set — never crawl the full index.
 
 ```bash
 python -m pip install -r pipeline/requirements.txt

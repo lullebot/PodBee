@@ -13,6 +13,13 @@ from pathlib import Path
 
 from pipeline.db import CatalogWriter
 from pipeline.extract import CHART_SLUGS
+from pipeline.podcastindex import (
+    ENV_KEY,
+    ENV_SECRET,
+    credentials_from_env,
+    merge_feed_urls,
+    trending_feed_urls,
+)
 from pipeline.rss import ingest_feed, load_feed_urls
 
 log = logging.getLogger("pipeline.ingest")
@@ -100,6 +107,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Upsert catalog rows but do not refresh chart_entries.",
     )
     parser.add_argument(
+        "--rss-only",
+        action="store_true",
+        help="Do not call Podcast Index, even if PODCAST_INDEX_* env vars are set.",
+    )
+    parser.add_argument(
+        "--trending-max",
+        type=int,
+        default=15,
+        help="Max feeds per Podcast Index trending page (capped at 25). Ignored with --rss-only.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="DEBUG logging.",
@@ -117,6 +135,36 @@ def main(argv: list[str] | None = None) -> int:
 
     feeds_path = resolve_feeds_path(args.feeds)
     urls = load_feed_urls(str(feeds_path))
+    pi_creds = None if args.rss_only else credentials_from_env()
+    if args.rss_only:
+        log.info("RSS-only mode: skipping Podcast Index")
+    elif pi_creds:
+        log.info(
+            "Podcast Index trending enabled (4 small pages). "
+            "Do not crawl the full index — weekly dump is the bulk path."
+        )
+        try:
+            discovered = trending_feed_urls(
+                pi_creds[0],
+                pi_creds[1],
+                max_per_chart=args.trending_max,
+            )
+            before = len(urls)
+            urls = merge_feed_urls(urls, discovered)
+            log.info(
+                "merged %s starter + %s discovered → %s unique feeds",
+                before,
+                len(discovered),
+                len(urls),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Podcast Index trending skipped: %s", exc)
+    else:
+        log.info(
+            "Podcast Index env not set (%s / %s) — using RSS list only",
+            ENV_KEY,
+            ENV_SECRET,
+        )
     if args.limit_feeds:
         urls = urls[: args.limit_feeds]
     if not urls:
