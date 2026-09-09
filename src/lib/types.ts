@@ -204,6 +204,7 @@ export interface PodcastDetail {
   chart_placements: ChartPlacement[];
   seasons: Season[];
   episode_cards: EpisodeCard[];
+  episode_total: number;
   credits: PersonCreditRef[];
   similar: SimilarPodcast[];
 }

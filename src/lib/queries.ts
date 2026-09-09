@@ -117,7 +117,7 @@ export async function getPodcastDetail(
   const [
     { data: primary_company },
     { data: seasons },
-    { data: episodes },
+    { data: episodes, count: episodeCount },
     { data: genreRows },
     { data: chartRows },
   ] = await Promise.all([
@@ -136,10 +136,12 @@ export async function getPodcastDetail(
     supabase
       .from("episodes")
       .select(
-        "id, slug, title, episode_number, episode_type, duration_seconds, published_at, cover_image_url, season_id"
+        "id, slug, title, episode_number, episode_type, duration_seconds, published_at, cover_image_url, season_id",
+        { count: "exact" }
       )
       .eq("podcast_id", p.id)
-      .order("published_at", { ascending: false }),
+      .order("published_at", { ascending: false })
+      .limit(25),
     supabase
       .from("podcast_genres")
       .select("is_primary, genre_id, genres(id, slug, name)")
@@ -204,6 +206,7 @@ export async function getPodcastDetail(
     chart_placements,
     seasons: seasonList,
     episode_cards,
+    episode_total: episodeCount ?? episode_cards.length,
     credits,
     similar,
   };

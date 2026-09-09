@@ -13,6 +13,7 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
     primary_company,
     credits,
     episode_cards,
+    episode_total,
     genres,
     chart_placements,
     similar,
@@ -165,7 +166,15 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
         ) : null}
 
         <section className="mt-16">
-          <h2 className="text-2xl font-semibold tracking-tight">Episodes</h2>
+          <div className="flex items-baseline justify-between gap-4">
+            <h2 className="text-2xl font-semibold tracking-tight">Episodes</h2>
+            {episode_total > 0 ? (
+              <span className="text-[13px] text-white/45">
+                Showing {Math.min(episode_cards.length, episode_total)} of{" "}
+                {episode_total}
+              </span>
+            ) : null}
+          </div>
           <Card className="mt-6 px-6 sm:px-8">
             {episode_cards.length === 0 ? (
               <p className="py-10 text-[15px] text-white/45">
