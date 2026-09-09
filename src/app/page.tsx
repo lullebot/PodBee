@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ChartSection } from "@/components/charts/ChartSection";
 import { StarRating } from "@/components/ui/StarRating";
 import { getChartBoards } from "@/lib/charts";
+import { SiteHeader } from "@/components/layout/SiteHeader";
+import { AdSlot } from "@/components/ads/AdSlot";
 
 const GENRE_CHIPS = [
   { label: "Top", href: "#top-overall" },
@@ -19,7 +21,8 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-[#0B1C2C] text-white">
-      <div className="mx-auto max-w-5xl px-6 sm:px-8 pt-14 sm:pt-20 pb-28">
+      <SiteHeader />
+      <div className="mx-auto max-w-5xl px-6 sm:px-8 pt-10 sm:pt-14 pb-28">
         <header className="flex flex-col gap-8 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[13px] font-medium uppercase tracking-wide text-white/45">
@@ -80,6 +83,10 @@ export default async function HomePage() {
             </div>
           </Link>
         ) : null}
+
+        <div className="mt-10">
+          <AdSlot label="Home" size="banner" />
+        </div>
 
         {boards.map((board) => (
           <div key={board.chart.slug} id={board.chart.slug}>

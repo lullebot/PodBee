@@ -1,3 +1,4 @@
+import { AdSlot } from "@/components/ads/AdSlot";
 import Link from "next/link";
 import type { PodcastDetail } from "@/lib/types";
 import { Card } from "@/components/ui/Card";
@@ -93,6 +94,10 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
             </div>
           </div>
         </header>
+
+        <div className="mt-12">
+          <AdSlot label="Title" size="banner" />
+        </div>
 
         {podcast.description ? (
           <section className="mt-14">
