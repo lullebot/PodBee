@@ -49,7 +49,7 @@ GENRE_NAMES = {
 
 class CatalogWriter:
     def __init__(self, url: str, service_role_key: str, *, dry_run: bool = False) -> None:
-        if not url or not service_role_key:
+        if not dry_run and (not url or not service_role_key):
             raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required")
         self.url = url.rstrip("/")
         self.dry_run = dry_run

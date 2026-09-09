@@ -213,7 +213,21 @@ def parse_feed(xml: bytes, *, source_url: str, max_episodes: int = 80) -> Parsed
         extract_credits_from_text(description, source="channel_desc"),
         extract_credits_from_text(subtitle, source="channel_sub"),
         credits_from_author(owner, role="producer", source="itunes_owner"),
+        episode_guest_from_title(title, description or subtitle or title),
     )
+    # Title "… with Guy Raz" is a host, not an episode guest.
+    remapped: list[CreditHint] = []
+    for hint in show_credits:
+        if hint.source == "title_with":
+            remapped.append(CreditHint(hint.display_name, "host", "show_title"))
+        else:
+            remapped.append(hint)
+    show_slug = slugify(title)
+    show_credits = [
+        c
+        for c in merge_credits(remapped)
+        if slugify(c.display_name) != show_slug
+    ]
 
     entries = list(parsed.entries or [])[: max(0, max_episodes)]
     episodes: list[ParsedEpisode] = []

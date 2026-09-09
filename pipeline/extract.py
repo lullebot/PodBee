@@ -137,20 +137,51 @@ ORG_FRAGMENTS = (
     "studios",
     "network",
     "productions",
+    "presents",
     "llc",
     "inc.",
     "incorporated",
-    "media company",
+    "media",
     "radio hour",
     "news now",
+)
+
+ORG_LAST_WORDS = {
+    "radio",
+    "media",
+    "presents",
+    "network",
+    "studios",
+    "productions",
+    "show",
+    "hour",
+}
+
+ORG_EXACT.update(
+    {
+        "audacy",
+        "stitcher",
+        "audioboom",
+        "megaphone",
+        "acast",
+        "simplecast",
+        "wbez chicago",
+        "wbez",
+        "wnyc",
+        "hidden brain media",
+        "casefile presents",
+        "freakonomics radio",
+        "the moth",
+        "pod save america",
+    }
 )
 
 _NAME_SPLIT = re.compile(
     r"\s*(?:,|&amp;|&| and | / |;|\+| w/ | with )\s*", re.IGNORECASE
 )
-_PERSON_NAME = re.compile(
-    r"^[A-Z][\w.'’\-]+(?:\s+[A-Z][\w.'’\-]+){0,3}$"
-)
+# Initials (J.R.) or a capitalized word — period is not a trailing junk magnet.
+_NAME_TOKEN = r"(?:[A-Z]\.|[A-Z][A-Za-z'’-]+)"
+_PERSON_NAME = re.compile(rf"^{_NAME_TOKEN}(?:\s+{_NAME_TOKEN}){{0,3}}$")
 _HOSTED_BY = re.compile(
     r"hosted by\s+(.+?)(?:\.|,|!|\n|with today|$)",
     re.IGNORECASE,
@@ -160,35 +191,31 @@ _JOIN_YOUR_HOST = re.compile(
     re.IGNORECASE,
 )
 _YOUR_HOST = re.compile(
-    r"\byour hosts?\s+([A-Z][\w.'’\-]+(?:\s+[A-Z][\w.'’\-]+){0,3})",
+    rf"\byour hosts?\s+({_NAME_TOKEN}(?:\s+{_NAME_TOKEN}){{0,3}})",
 )
 _BEST_FRIEND = re.compile(
-    r"\bbest friend\s+([A-Z][\w.'’\-]+(?:\s+[A-Z][\w.'’\-]+){0,3})",
+    rf"\bbest friend\s+({_NAME_TOKEN}(?:\s+{_NAME_TOKEN}){{0,3}})",
 )
 _COHOSTED = re.compile(
     r"co-?hosted by\s+(.+?)(?:\.|,|!|\n|$)",
     re.IGNORECASE,
 )
 _GUEST_LINE = re.compile(
-    r"(?:guest(?:s)?|featuring|interview(?:ing)?(?: with)?|with guest)\s*[:\-–]\s*"
-    r"([A-Z][\w.'’\-]+(?:\s+[A-Z][\w.'’\-]+){0,3})",
-    re.IGNORECASE,
+    r"(?i:guest(?:s)?|featuring|interview(?:ing)?(?: with)?|with guest)\s*[:\-–]\s*"
+    rf"({_NAME_TOKEN}(?:\s+{_NAME_TOKEN}){{0,3}})"
 )
 _JOINED_BY = re.compile(
-    r"(?:joined by|sits down with|talks? with|interview(?:s|ed)?(?: by| with)?)\s+"
-    r"([A-Z][\w.'’\-]+(?:\s+[A-Z][\w.'’\-]+){0,3})",
-    re.IGNORECASE,
+    r"(?i:joined by|sits down with|talks? with|interview(?:s|ed)?(?: by| with)?)\s+"
+    rf"({_NAME_TOKEN}(?:\s+{_NAME_TOKEN}){{0,3}})"
 )
 _PRODUCED_BY = re.compile(
-    r"(?:produced by|producer[:\s]+)\s*([A-Z][\w.'’\-]+(?:\s+[A-Z][\w.'’\-]+){0,3})",
-    re.IGNORECASE,
+    rf"(?i:produced by|producer[:\s]+)\s*({_NAME_TOKEN}(?:\s+{_NAME_TOKEN}){{0,3}})"
 )
 _EXEC_PROD = re.compile(
-    r"executive produc(?:er|ed by)\s*:?\s*([A-Z][\w.'’\-]+(?:\s+[A-Z][\w.'’\-]+){0,3})",
-    re.IGNORECASE,
+    rf"(?i:executive produc(?:er|ed by))\s*:?\s*({_NAME_TOKEN}(?:\s+{_NAME_TOKEN}){{0,3}})"
 )
 _TITLE_WITH = re.compile(
-    r"\bwith\s+([A-Z][\w.'’\-]+(?:\s+[A-Z][\w.'’\-]+){1,3})\s*$"
+    rf"\bwith\s+({_NAME_TOKEN}(?:\s+{_NAME_TOKEN}){{1,3}})\s*$"
 )
 _HTML_TAG = re.compile(r"(?is)<(script|style).*?>.*?</\1>|<[^>]+>")
 _WS = re.compile(r"\s+")
@@ -241,6 +268,7 @@ def slugify(text: str, max_len: int = 80) -> str:
     raw = unicodedata.normalize("NFKD", text or "")
     raw = raw.encode("ascii", "ignore").decode("ascii")
     raw = raw.lower()
+    raw = re.sub(r"['’]", "", raw)
     raw = re.sub(r"[^a-z0-9]+", "-", raw).strip("-")
     if len(raw) > max_len:
         raw = raw[:max_len].rstrip("-")
@@ -289,14 +317,24 @@ def looks_like_org(name: str) -> bool:
         return True
     if any(frag in n for frag in ORG_FRAGMENTS):
         return True
+    parts = n.split()
+    if parts and parts[-1] in ORG_LAST_WORDS:
+        return True
+    if re.match(r"^w[a-z]{2,3}\b", n) and len(parts) <= 3:
+        return True  # US radio call signs (WBEZ, WNYC, …)
     if " " not in n and n.isupper() and 2 <= len(n) <= 6:
         return True
     return False
 
 
-def looks_like_person(name: str) -> bool:
+def clean_person_name(name: str) -> str:
     cleaned = html.unescape(name or "").strip()
     cleaned = cleaned.replace("\u2019", "'")
+    return cleaned.strip(" \t.,;:!?")
+
+
+def looks_like_person(name: str) -> bool:
+    cleaned = clean_person_name(name)
     if not cleaned or looks_like_org(cleaned):
         return False
     if any(ch.isdigit() for ch in cleaned):
@@ -312,7 +350,7 @@ def split_people(raw: str | None) -> list[str]:
         return []
     if looks_like_org(text) and " and " not in text.lower() and "&" not in text:
         return []
-    parts = [p.strip(" .") for p in _NAME_SPLIT.split(text) if p and p.strip()]
+    parts = [clean_person_name(p) for p in _NAME_SPLIT.split(text) if p and p.strip()]
     out: list[str] = []
     seen: set[str] = set()
     for part in parts:
@@ -395,8 +433,9 @@ def extract_credits_from_text(text: str | None, *, source: str) -> list[CreditHi
 
     def add(names: Iterable[str], role: str, tag: str) -> None:
         for name in names:
-            if looks_like_person(name):
-                hints.append(CreditHint(name.strip(), role, f"{source}:{tag}"))
+            cleaned = clean_person_name(name)
+            if looks_like_person(cleaned):
+                hints.append(CreditHint(cleaned, role, f"{source}:{tag}"))
 
     for match in _HOSTED_BY.finditer(blob):
         add(split_people(match.group(1)) or [match.group(1).strip()], "host", "hosted_by")
@@ -427,15 +466,15 @@ def credits_from_author(author: str | None, *, role: str, source: str) -> list[C
 
 
 def episode_guest_from_title(title: str, description: str | None) -> list[CreditHint]:
-    cleaned = html.unescape(title or "").strip()
+    cleaned = clean_person_name(title)
     hints: list[CreditHint] = []
     if looks_like_person(cleaned) and description:
         desc = (strip_html(description) or "").lower()
         if cleaned.lower() in desc or cleaned.split()[0].lower() in desc:
             hints.append(CreditHint(cleaned, "guest", "episode_title"))
-    with_match = _TITLE_WITH.search(cleaned)
+    with_match = _TITLE_WITH.search(html.unescape(title or "").strip())
     if with_match and looks_like_person(with_match.group(1)):
-        hints.append(CreditHint(with_match.group(1), "guest", "title_with"))
+        hints.append(CreditHint(clean_person_name(with_match.group(1)), "guest", "title_with"))
     return _dedupe_credits(hints)
 
 
@@ -454,7 +493,15 @@ def _dedupe_credits(hints: Iterable[CreditHint]) -> list[CreditHint]:
 
 
 def merge_credits(*groups: Iterable[CreditHint]) -> list[CreditHint]:
-    return _dedupe_credits([h for g in groups for h in g])
+    merged = _dedupe_credits([h for g in groups for h in g])
+    host_slugs = {
+        slugify(h.display_name) for h in merged if h.role_id in {"host", "co_host"}
+    }
+    return [
+        h
+        for h in merged
+        if not (h.role_id == "producer" and slugify(h.display_name) in host_slugs)
+    ]
 
 
 def score_podcast(

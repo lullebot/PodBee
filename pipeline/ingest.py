@@ -124,20 +124,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     url, service_key = read_env()
-    if not args.dry_run and (not url or not service_key):
-        log.error(
-            "missing env: set SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and %s. "
-            "Do not put secrets in code or the Next.js app.",
-            ENV_KEY_NAME,
-        )
-        return 2
-
-    writer = (
-        CatalogWriter(url, service_key or "dry-run", dry_run=True)
-        if args.dry_run
-        else CatalogWriter(url, service_key, dry_run=False)
-    )
-    if not args.dry_run:
+    writer: CatalogWriter | None = None
+    if args.dry_run:
+        log.info("dry-run: fetch/parse only (no Supabase writes)")
+    else:
+        if not url or not service_key:
+            log.error(
+                "missing env: set SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and %s. "
+                "Do not put secrets in code or the Next.js app.",
+                ENV_KEY_NAME,
+            )
+            return 2
+        writer = CatalogWriter(url, service_key, dry_run=False)
         writer.ensure_charts()
         for spec_slug in ("comedy", "true-crime", "news"):
             writer.ensure_genre(spec_slug)
@@ -165,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
         for credit in podcast.credits:
             log.info("    show %s: %s", credit.role_id, credit.display_name)
 
-        if args.dry_run:
+        if args.dry_run or writer is None:
             ok += 1
             continue
 
@@ -183,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
             log.error("upsert failed for %s: %s", podcast.slug, exc)
             failed.append(feed_url)
 
-    if not args.dry_run and not args.skip_charts:
+    if writer is not None and not args.skip_charts:
         log.info("refreshing charts %s", ", ".join(CHART_SLUGS))
         try:
             counts = writer.refresh_charts()

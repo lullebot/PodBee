@@ -29,6 +29,7 @@ class SlugTests(unittest.TestCase):
     def test_slug_from_display_name(self) -> None:
         self.assertEqual(slugify("Ira Glass"), "ira-glass")
         self.assertEqual(slugify("Conan O’Brien"), "conan-obrien")
+        self.assertEqual(slugify("Wait Wait... Don't Tell Me!"), "wait-wait-dont-tell-me")
         self.assertEqual(sort_name("Ira Glass"), "Glass, Ira")
 
     def test_episode_slug_uses_number(self) -> None:
@@ -50,6 +51,9 @@ class CreditTests(unittest.TestCase):
         self.assertTrue(looks_like_org("The New York Times"))
         self.assertTrue(looks_like_org("Audiochuck"))
         self.assertTrue(looks_like_org("NPR"))
+        self.assertTrue(looks_like_org("WBEZ Chicago"))
+        self.assertTrue(looks_like_org("Hidden Brain Media"))
+        self.assertTrue(looks_like_org("Casefile Presents"))
         self.assertFalse(looks_like_person("Team Coco & Earwolf"))
         self.assertEqual(split_people("The New York Times"), [])
         self.assertEqual(credits_from_author("NPR", role="host", source="t"), [])
