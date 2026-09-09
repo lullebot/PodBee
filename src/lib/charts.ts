@@ -1,5 +1,24 @@
 import { supabase } from "@/lib/supabase";
-import type { Chart, ChartBoard, ChartEntry } from "@/lib/types";
+import type { Chart, ChartBoard, ChartEntry, ChartKind } from "@/lib/types";
+
+export interface ChartRankingRow {
+  chart_id: string;
+  chart_slug: string;
+  chart_title: string;
+  chart_kind: ChartKind;
+  genre_slug: string | null;
+  genre_name: string | null;
+  rank: number;
+  podcast_id: string;
+  podcast_slug: string;
+  podcast_title: string;
+  podcast_subtitle: string | null;
+  podcast_cover_url: string | null;
+  podcast_status: "active" | "completed" | "hiatus" | "cancelled";
+  rating_average: number | null;
+  rating_count: number | null;
+  primary_company_name: string | null;
+}
 
 /** Demo boards so the home looks like IMDb while ranking tables / seed land. */
 function demoBoards(): ChartBoard[] {
@@ -31,7 +50,8 @@ function demoBoards(): ChartBoard[] {
         id: `${slug}-${i}`,
         slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
         title: name,
-        subtitle: kind === "genre" ? genre?.replace(/-/g, " ") ?? null : "Sample catalog",
+        subtitle:
+          kind === "genre" ? genre?.replace(/-/g, " ") ?? null : "Sample catalog",
         cover_image_url: covers[i % covers.length],
         status: "active" as const,
         primary_company_name: "Sample network",
@@ -71,53 +91,74 @@ function demoBoards(): ChartBoard[] {
   ];
 }
 
+const CHART_ORDER = [
+  "top-overall",
+  "top-comedy",
+  "top-true-crime",
+  "top-news",
+] as const;
+
+function boardsFromRankings(rows: ChartRankingRow[]): ChartBoard[] {
+  const bySlug = new Map<string, ChartBoard>();
+
+  for (const row of rows) {
+    let board = bySlug.get(row.chart_slug);
+    if (!board) {
+      board = {
+        chart: {
+          id: row.chart_id,
+          slug: row.chart_slug,
+          title: row.chart_title,
+          kind: row.chart_kind,
+          genre_slug: row.genre_slug,
+          description: null,
+        },
+        entries: [],
+      };
+      bySlug.set(row.chart_slug, board);
+    }
+    board.entries.push({
+      rank: row.rank,
+      podcast: {
+        id: row.podcast_id,
+        slug: row.podcast_slug,
+        title: row.podcast_title,
+        subtitle: row.podcast_subtitle,
+        cover_image_url: row.podcast_cover_url,
+        status: row.podcast_status,
+        primary_company_name: row.primary_company_name,
+      },
+    });
+  }
+
+  const ordered: ChartBoard[] = [];
+  for (const slug of CHART_ORDER) {
+    const b = bySlug.get(slug);
+    if (b) ordered.push(b);
+  }
+  for (const [slug, b] of bySlug) {
+    if (!CHART_ORDER.includes(slug as (typeof CHART_ORDER)[number])) {
+      ordered.push(b);
+    }
+  }
+  return ordered;
+}
+
 export async function getChartBoards(): Promise<{
   boards: ChartBoard[];
   source: "live" | "demo";
 }> {
   try {
-    const { data: charts, error } = await supabase
-      .from("charts")
-      .select("id, slug, title, kind, genre_slug, description")
-      .order("title");
+    const { data, error } = await supabase
+      .from("chart_rankings")
+      .select("*")
+      .order("rank");
 
-    if (error || !charts || charts.length === 0) {
+    if (error || !data || data.length === 0) {
       return { boards: demoBoards(), source: "demo" };
     }
 
-    const boards: ChartBoard[] = [];
-    for (const chart of charts as Chart[]) {
-      const { data: rows } = await supabase
-        .from("chart_entries")
-        .select(
-          "rank, podcasts(id, slug, title, subtitle, cover_image_url, status, companies:primary_company_id(name))"
-        )
-        .eq("chart_id", chart.id)
-        .order("rank")
-        .limit(10);
-
-      const entries: ChartEntry[] = (rows ?? []).flatMap((row: any) => {
-        const p = row.podcasts;
-        if (!p) return [];
-        return [
-          {
-            rank: row.rank,
-            podcast: {
-              id: p.id,
-              slug: p.slug,
-              title: p.title,
-              subtitle: p.subtitle,
-              cover_image_url: p.cover_image_url,
-              status: p.status,
-              primary_company_name: p.companies?.name ?? null,
-            },
-          },
-        ];
-      });
-
-      boards.push({ chart, entries });
-    }
-
+    const boards = boardsFromRankings(data as ChartRankingRow[]);
     if (boards.every((b) => b.entries.length === 0)) {
       return { boards: demoBoards(), source: "demo" };
     }
@@ -126,4 +167,18 @@ export async function getChartBoards(): Promise<{
   } catch {
     return { boards: demoBoards(), source: "demo" };
   }
+}
+
+export async function getChartBoard(
+  slug: string
+): Promise<ChartBoard | null> {
+  const { data, error } = await supabase
+    .from("chart_rankings")
+    .select("*")
+    .eq("chart_slug", slug)
+    .order("rank");
+
+  if (error || !data || data.length === 0) return null;
+  const boards = boardsFromRankings(data as ChartRankingRow[]);
+  return boards[0] ?? null;
 }
