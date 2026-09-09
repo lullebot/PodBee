@@ -23,6 +23,25 @@ from pipeline.extract import (
 
 log = logging.getLogger("pipeline.db")
 
+
+def resolve_unseasoned_episode_number(
+    episode_number: int | None,
+    season_id: str | None,
+    conflicting_slug: str | None,
+) -> int | None:
+    """Keep episode_number unless it would hit episodes_podcast_number_no_season_uidx.
+
+    That partial unique index is on (podcast_id, episode_number) WHERE season_id IS NULL.
+    Upserts key on (podcast_id, slug), so two slugs can share a number. When another
+    unseasoned episode already owns the number, drop it on the incoming row.
+    """
+    if episode_number is None or season_id is not None:
+        return episode_number
+    if conflicting_slug:
+        return None
+    return episode_number
+
+
 GENRE_NAMES = {
     "comedy": "Comedy",
     "true-crime": "True Crime",
@@ -216,6 +235,63 @@ class CatalogWriter:
             written += 1
         return written
 
+    def _conflicting_unseasoned_slug(
+        self,
+        podcast_id: str,
+        episode_number: int,
+        slug: str,
+    ) -> str | None:
+        """Slug of another episode that already owns (podcast_id, episode_number) with no season."""
+        if self.dry_run or self.client is None:
+            return None
+        result = (
+            self.client.table("episodes")
+            .select("slug")
+            .eq("podcast_id", podcast_id)
+            .eq("episode_number", episode_number)
+            .is_("season_id", "null")
+            .neq("slug", slug)
+            .limit(1)
+            .execute()
+        )
+        rows = result.data or []
+        if not rows:
+            return None
+        return rows[0].get("slug")
+
+    def _episode_number_for_write(
+        self,
+        podcast_id: str,
+        slug: str,
+        episode_number: int | None,
+        season_id: str | None,
+        claimed_unseasoned_numbers: dict[int, str],
+    ) -> int | None:
+        conflicting = None
+        if episode_number is not None and season_id is None:
+            owner = claimed_unseasoned_numbers.get(episode_number)
+            if owner and owner != slug:
+                conflicting = owner
+            else:
+                conflicting = self._conflicting_unseasoned_slug(
+                    podcast_id, episode_number, slug
+                )
+        resolved = resolve_unseasoned_episode_number(
+            episode_number, season_id, conflicting
+        )
+        if resolved is None and episode_number is not None and season_id is None:
+            log.info(
+                "clearing episode_number=%s for podcast %s slug=%s "
+                "(already used by slug=%s; episodes_podcast_number_no_season_uidx)",
+                episode_number,
+                podcast_id,
+                slug,
+                conflicting,
+            )
+        elif resolved is not None and season_id is None:
+            claimed_unseasoned_numbers[resolved] = slug
+        return resolved
+
     def upsert_podcast(self, podcast: ParsedPodcast) -> dict[str, int | str]:
         show = self.upsert_by(
             "podcasts",
@@ -268,11 +344,20 @@ class CatalogWriter:
 
         episode_count = 0
         episode_credit_count = 0
+        # Numbers claimed earlier in this upsert (same podcast, season_id IS NULL).
+        claimed_unseasoned_numbers: dict[int, str] = {}
         for episode in podcast.episodes:
             season_id = (
                 season_ids.get(episode.season_number)
                 if episode.season_number is not None
                 else None
+            )
+            episode_number = self._episode_number_for_write(
+                podcast_id,
+                episode.slug,
+                episode.episode_number,
+                season_id,
+                claimed_unseasoned_numbers,
             )
             row = self.upsert_by(
                 "episodes",
@@ -282,7 +367,7 @@ class CatalogWriter:
                     "title": episode.title,
                     "subtitle": episode.subtitle,
                     "description": episode.description,
-                    "episode_number": episode.episode_number,
+                    "episode_number": episode_number,
                     "episode_type": episode.episode_type,
                     "duration_seconds": episode.duration_seconds,
                     "explicit": episode.explicit,
