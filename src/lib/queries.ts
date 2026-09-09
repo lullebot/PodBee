@@ -12,6 +12,7 @@ import type {
   Podcast,
   PodcastDetail,
   Season,
+  SimilarPodcast,
 } from "@/lib/types";
 
 async function loadCredits(
@@ -39,6 +40,66 @@ async function loadCredits(
       },
     ];
   });
+}
+
+
+async function loadSimilarPodcasts(
+  podcastId: string,
+  genreIds: string[]
+): Promise<SimilarPodcast[]> {
+  if (genreIds.length === 0) return [];
+
+  // Prefer view when 004 is live
+  const view = await supabase
+    .from("similar_podcasts_ranked")
+    .select(
+      "similar_podcast_id, similar_slug, similar_title, similar_cover_url, rating_average, rating_count, status, shared_genre_name"
+    )
+    .eq("podcast_id", podcastId)
+    .order("shared_genre_count", { ascending: false })
+    .order("rating_average", { ascending: false })
+    .limit(12);
+
+  if (!view.error && view.data && view.data.length > 0) {
+    return view.data.map((row: any) => ({
+      id: row.similar_podcast_id,
+      slug: row.similar_slug,
+      title: row.similar_title,
+      cover_image_url: row.similar_cover_url,
+      rating_average: row.rating_average,
+      rating_count: row.rating_count,
+      status: row.status,
+      shared_genre_name: row.shared_genre_name,
+    }));
+  }
+
+  const { data } = await supabase
+    .from("podcast_genres")
+    .select(
+      "genre_id, genres(slug,name), podcasts(id,slug,title,cover_image_url,rating_average,rating_count,status)"
+    )
+    .in("genre_id", genreIds)
+    .neq("podcast_id", podcastId);
+
+  const byId = new Map<string, SimilarPodcast>();
+  for (const row of data ?? []) {
+    const pod = (row as any).podcasts;
+    if (!pod?.id || byId.has(pod.id)) continue;
+    byId.set(pod.id, {
+      id: pod.id,
+      slug: pod.slug,
+      title: pod.title,
+      cover_image_url: pod.cover_image_url,
+      rating_average: pod.rating_average,
+      rating_count: pod.rating_count,
+      status: pod.status,
+      shared_genre_name: (row as any).genres?.name ?? null,
+    });
+  }
+
+  return [...byId.values()]
+    .sort((a, b) => (b.rating_average ?? 0) - (a.rating_average ?? 0))
+    .slice(0, 12);
 }
 
 export async function getPodcastDetail(
@@ -81,7 +142,7 @@ export async function getPodcastDetail(
       .order("published_at", { ascending: false }),
     supabase
       .from("podcast_genres")
-      .select("is_primary, genres(id, slug, name)")
+      .select("is_primary, genre_id, genres(id, slug, name)")
       .eq("podcast_id", p.id),
     supabase
       .from("chart_rankings")
@@ -113,9 +174,14 @@ export async function getPodcastDetail(
     };
   });
 
-  const genres: Genre[] = (genreRows ?? []).flatMap((row: any) =>
-    row.genres ? [row.genres as Genre] : []
-  );
+  const genres: Genre[] = [];
+  const genreIds: string[] = [];
+  for (const row of genreRows ?? []) {
+    const g = (row as any).genres;
+    if (!g) continue;
+    genres.push(g as Genre);
+    genreIds.push(g.id);
+  }
 
   const chart_placements: ChartPlacement[] = (chartRows ?? []).map(
     (row: any) => ({
@@ -125,7 +191,10 @@ export async function getPodcastDetail(
     })
   );
 
-  const credits = await loadCredits("podcast_credits", "podcast_id", p.id);
+  const [credits, similar] = await Promise.all([
+    loadCredits("podcast_credits", "podcast_id", p.id),
+    loadSimilarPodcasts(p.id, genreIds),
+  ]);
 
   return {
     podcast: p,
@@ -136,6 +205,7 @@ export async function getPodcastDetail(
     seasons: seasonList,
     episode_cards,
     credits,
+    similar,
   };
 }
 

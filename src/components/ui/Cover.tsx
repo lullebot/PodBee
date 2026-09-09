@@ -6,7 +6,7 @@ export function Cover({
 }: {
   src: string | null | undefined;
   alt: string;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl" | "fill";
 }) {
   const dim =
     size === "sm"
@@ -15,7 +15,9 @@ export function Cover({
         ? "h-24 w-24"
         : size === "xl"
           ? "h-56 w-56"
-          : "h-40 w-40";
+          : size === "fill"
+            ? "aspect-square w-full"
+            : "h-40 w-40";
 
   if (!src) {
     return (

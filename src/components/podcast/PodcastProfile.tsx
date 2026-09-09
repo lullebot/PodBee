@@ -14,6 +14,7 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
     episode_cards,
     genres,
     chart_placements,
+    similar,
   } = data;
   const cast = credits
     .slice()
@@ -128,6 +129,32 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
                 ))}
               </ul>
             </Card>
+          </section>
+        ) : null}
+
+
+        {similar.length > 0 ? (
+          <section className="mt-16">
+            <h2 className="text-2xl font-semibold tracking-tight">More like this</h2>
+            <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-5 sm:gap-6">
+              {similar.map((s) => (
+                <Link
+                  key={s.id}
+                  href={`/podcasts/${s.slug}`}
+                  className="group"
+                >
+                  <Cover src={s.cover_image_url} alt={s.title} size="fill" />
+                  <p className="mt-3 text-[15px] font-semibold tracking-tight text-black group-hover:text-[#007AFF] transition-colors line-clamp-2">
+                    {s.title}
+                  </p>
+                  {s.rating_average != null ? (
+                    <p className="mt-1 text-[13px] text-neutral-500 tabular-nums">
+                      {s.rating_average.toFixed(1)}/10
+                    </p>
+                  ) : null}
+                </Link>
+              ))}
+            </div>
           </section>
         ) : null}
 

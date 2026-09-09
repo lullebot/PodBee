@@ -179,6 +179,17 @@ export interface EpisodeCard {
   season_title: string | null;
 }
 
+export interface SimilarPodcast {
+  id: UUID;
+  slug: string;
+  title: string;
+  cover_image_url: string | null;
+  rating_average: number | null;
+  rating_count: number | null;
+  status: PodcastStatus;
+  shared_genre_name?: string | null;
+}
+
 export interface ChartPlacement {
   chart_slug: string;
   chart_title: string;
@@ -194,6 +205,7 @@ export interface PodcastDetail {
   seasons: Season[];
   episode_cards: EpisodeCard[];
   credits: PersonCreditRef[];
+  similar: SimilarPodcast[];
 }
 
 export interface EpisodeDetail {
