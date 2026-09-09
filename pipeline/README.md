@@ -2,7 +2,7 @@
 
 Sprint 2 catalog loader. Fetches **public podcast RSS feeds** and upserts into the live Supabase schema (`podcasts`, `seasons`, `episodes`, `people`, credits, `podcast_genres`, `chart_entries`).
 
-This is **not** a media player. Enclosure URLs are stored as episode metadata only. No Podcast Index API.
+This is **not** a media player. Enclosure URLs are stored as episode metadata only. Episode and cover detail always come from each show’s public RSS. Podcast Index is optional and limited to four small trending lookups — never a full-index crawl.
 
 The Next.js app keeps using the **anon** key. This package is the only place that should see `SUPABASE_SERVICE_ROLE_KEY`.
 
@@ -60,6 +60,12 @@ python -m pipeline.ingest --feeds feeds.txt --max-episodes 40
 
 # skip chart_entries rebuild
 python -m pipeline.ingest --feeds feeds.txt --skip-charts
+
+# force RSS-only (even if PODCAST_INDEX_* is set)
+python -m pipeline.ingest --feeds feeds.txt --rss-only
+
+# optional: smaller trending pages when PI env is set (default 15, max 25)
+python -m pipeline.ingest --feeds feeds.txt --trending-max 10
 ```
 
 ## What it writes
