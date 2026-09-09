@@ -29,7 +29,7 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
   const episodeCredits = sorted.filter((c) => c.work.kind === "episode");
 
   return (
-    <main className="min-h-screen bg-white text-black">
+    <main className="min-h-screen bg-[#0B1C2C] text-white">
       <div className="mx-auto max-w-3xl px-6 sm:px-8 pt-16 sm:pt-24 pb-32">
         <Link
           href="/"
@@ -41,7 +41,7 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
         <header className="mt-8 flex flex-col sm:flex-row gap-8 sm:gap-10 items-start">
           <Cover src={person.image_url} alt={person.display_name} size="xl" />
           <div className="min-w-0 pt-1">
-            <p className="text-[13px] font-medium uppercase tracking-wide text-neutral-400">
+            <p className="text-[13px] font-medium uppercase tracking-wide text-white/45">
               Person
             </p>
             <h1 className="mt-2 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05]">
@@ -63,7 +63,7 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
         </header>
 
         {person.bio ? (
-          <p className="mt-12 text-[17px] leading-relaxed text-neutral-700 whitespace-pre-line max-w-2xl">
+          <p className="mt-12 text-[17px] leading-relaxed text-white/75 whitespace-pre-line max-w-2xl">
             {person.bio}
           </p>
         ) : null}
@@ -72,12 +72,12 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
           <h2 className="text-2xl font-semibold tracking-tight">
             Known for
           </h2>
-          <p className="mt-2 text-[15px] text-neutral-500">
+          <p className="mt-2 text-[15px] text-white/55">
             Credits across the PodBee catalog
           </p>
           <Card className="mt-6 px-6 sm:px-8">
             {sorted.length === 0 ? (
-              <p className="py-10 text-[15px] text-neutral-400">
+              <p className="py-10 text-[15px] text-white/45">
                 No credits yet.
               </p>
             ) : (
@@ -95,7 +95,7 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
                   return (
                     <li
                       key={`${c.role_id}-${workHref(c.work)}-${i}`}
-                      className="flex gap-5 items-center py-5 border-b border-black/[0.06] last:border-0"
+                      className="flex gap-5 items-center py-5 border-b border-white/10 last:border-0"
                     >
                       <Cover
                         src={workCover(c.work)}
@@ -105,11 +105,11 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
                       <div className="min-w-0 flex-1">
                         <Link
                           href={workHref(c.work)}
-                          className="text-[17px] font-semibold tracking-tight text-black hover:text-[#007AFF] transition-colors"
+                          className="text-[17px] font-semibold tracking-tight text-white hover:text-[#007AFF] transition-colors"
                         >
                           {workTitle(c.work)}
                         </Link>
-                        <p className="mt-1 text-[13px] text-neutral-500">
+                        <p className="mt-1 text-[13px] text-white/55">
                           {c.role_label}
                           {c.work.kind === "episode"
                             ? ` · ${c.work.podcast.title}`

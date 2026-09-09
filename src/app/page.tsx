@@ -15,16 +15,16 @@ export default async function HomePage() {
   const { boards, source } = await getChartBoards();
 
   return (
-    <main className="min-h-screen bg-white">
+    <main className="min-h-screen bg-[#0B1C2C]">
       <div className="mx-auto max-w-3xl px-6 sm:px-8 pt-20 sm:pt-28 pb-32">
         <header>
-          <p className="text-[13px] font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-[13px] font-medium uppercase tracking-wide text-white/45">
             Charts
           </p>
           <h1 className="mt-3 text-5xl sm:text-7xl font-semibold tracking-tight leading-[1.02]">
             PodBee
           </h1>
-          <p className="mt-5 max-w-xl text-lg sm:text-xl text-neutral-500 leading-snug">
+          <p className="mt-5 max-w-xl text-lg sm:text-xl text-white/55 leading-snug">
             Rankings for podcasts — by overall popularity and by type. A
             catalog, not a player.
           </p>
@@ -34,7 +34,7 @@ export default async function HomePage() {
               <a
                 key={chip.href}
                 href={chip.href}
-                className="rounded-full border border-black/[0.08] bg-neutral-50 px-4 py-2 text-[14px] font-medium text-black hover:border-[#007AFF] hover:text-[#007AFF] transition-colors"
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-[14px] font-medium text-white hover:border-[#007AFF] hover:text-[#007AFF] transition-colors"
               >
                 {chip.label}
               </a>
@@ -42,7 +42,7 @@ export default async function HomePage() {
           </nav>
 
           {source === "demo" ? (
-            <p className="mt-6 text-[13px] text-neutral-400">
+            <p className="mt-6 text-[13px] text-white/45">
               Showing sample rankings until live chart data is loaded.{" "}
               <Link href="/podcasts/example" className="text-[#007AFF]">
                 Profile pages

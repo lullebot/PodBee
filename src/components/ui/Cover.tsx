@@ -22,7 +22,7 @@ export function Cover({
   if (!src) {
     return (
       <div
-        className={`${dim} shrink-0 rounded-[24px] bg-neutral-100`}
+        className={`${dim} shrink-0 rounded-[24px] bg-white/10`}
         aria-label={alt}
       />
     );
@@ -33,7 +33,7 @@ export function Cover({
     <img
       src={src}
       alt={alt}
-      className={`${dim} shrink-0 rounded-[24px] object-cover bg-neutral-100`}
+      className={`${dim} shrink-0 rounded-[24px] object-cover bg-white/10`}
     />
   );
 }

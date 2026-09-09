@@ -10,19 +10,19 @@ export function ChartSection({ board }: { board: ChartBoard }) {
           {board.chart.title}
         </h2>
         {board.chart.kind === "genre" && board.chart.genre_slug ? (
-          <span className="text-[13px] font-medium uppercase tracking-wide text-neutral-400">
+          <span className="text-[13px] font-medium uppercase tracking-wide text-white/45">
             {board.chart.genre_slug.replace(/-/g, " ")}
           </span>
         ) : null}
       </div>
       {board.chart.description ? (
-        <p className="mt-3 text-[15px] text-neutral-500 max-w-xl">
+        <p className="mt-3 text-[15px] text-white/55 max-w-xl">
           {board.chart.description}
         </p>
       ) : null}
       <Card className="mt-8 px-5 sm:px-8">
         {board.entries.length === 0 ? (
-          <p className="py-12 text-[15px] text-neutral-400 text-center">
+          <p className="py-12 text-[15px] text-white/45 text-center">
             Rankings fill as the catalog grows.
           </p>
         ) : (

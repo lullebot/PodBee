@@ -21,7 +21,7 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
     .sort((a, b) => a.billing_order - b.billing_order);
 
   return (
-    <main className="min-h-screen bg-white text-black">
+    <main className="min-h-screen bg-[#0B1C2C] text-white">
       <div className="mx-auto max-w-3xl px-6 sm:px-8 pt-16 sm:pt-24 pb-32">
         <Link
           href="/"
@@ -37,14 +37,14 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
             size="xl"
           />
           <div className="min-w-0 flex-1 pt-1">
-            <p className="text-[13px] font-medium uppercase tracking-wide text-neutral-400">
+            <p className="text-[13px] font-medium uppercase tracking-wide text-white/45">
               Podcast
             </p>
             <h1 className="mt-2 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05]">
               {podcast.title}
             </h1>
             {podcast.subtitle ? (
-              <p className="mt-3 text-lg text-neutral-500 leading-snug">
+              <p className="mt-3 text-lg text-white/55 leading-snug">
                 {podcast.subtitle}
               </p>
             ) : null}
@@ -61,7 +61,7 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
                 {genres.map((g) => (
                   <span
                     key={g.id}
-                    className="rounded-full border border-black/[0.08] bg-neutral-50 px-3 py-1 text-[13px] font-medium text-neutral-700"
+                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[13px] font-medium text-white/75"
                   >
                     {g.name}
                   </span>
@@ -96,7 +96,7 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
         {podcast.description ? (
           <section className="mt-14">
             <h2 className="text-2xl font-semibold tracking-tight">Storyline</h2>
-            <p className="mt-4 text-[17px] leading-relaxed text-neutral-700 whitespace-pre-line max-w-2xl">
+            <p className="mt-4 text-[17px] leading-relaxed text-white/75 whitespace-pre-line max-w-2xl">
               {podcast.description}
             </p>
           </section>
@@ -110,7 +110,7 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
                 {cast.map((c) => (
                   <li
                     key={`${c.person.id}-${c.role_id}`}
-                    className="flex items-center justify-between gap-6 py-4 border-b border-black/[0.06] last:border-0"
+                    className="flex items-center justify-between gap-6 py-4 border-b border-white/10 last:border-0"
                   >
                     <div className="flex items-center gap-4 min-w-0">
                       <Cover
@@ -122,7 +122,7 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
                         {c.person.display_name}
                       </LinkChip>
                     </div>
-                    <span className="text-[15px] text-neutral-500 shrink-0">
+                    <span className="text-[15px] text-white/55 shrink-0">
                       {c.role_label}
                     </span>
                   </li>
@@ -144,11 +144,11 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
                   className="group"
                 >
                   <Cover src={s.cover_image_url} alt={s.title} size="fill" />
-                  <p className="mt-3 text-[15px] font-semibold tracking-tight text-black group-hover:text-[#007AFF] transition-colors line-clamp-2">
+                  <p className="mt-3 text-[15px] font-semibold tracking-tight text-white group-hover:text-[#007AFF] transition-colors line-clamp-2">
                     {s.title}
                   </p>
                   {s.rating_average != null ? (
-                    <p className="mt-1 text-[13px] text-neutral-500 tabular-nums">
+                    <p className="mt-1 text-[13px] text-white/55 tabular-nums">
                       {s.rating_average.toFixed(1)}/10
                     </p>
                   ) : null}
@@ -162,7 +162,7 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
           <h2 className="text-2xl font-semibold tracking-tight">Episodes</h2>
           <Card className="mt-6 px-6 sm:px-8">
             {episode_cards.length === 0 ? (
-              <p className="py-10 text-[15px] text-neutral-400">
+              <p className="py-10 text-[15px] text-white/45">
                 No episodes in the catalog yet.
               </p>
             ) : (

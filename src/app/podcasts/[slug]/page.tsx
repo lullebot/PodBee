@@ -11,13 +11,13 @@ export default async function PodcastPage({
 
   if (!data) {
     return (
-      <main className="min-h-screen bg-white flex items-center justify-center px-8">
+      <main className="min-h-screen bg-[#0B1C2C] flex items-center justify-center px-8">
         <div className="text-center max-w-md">
-          <p className="text-[13px] font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-[13px] font-medium uppercase tracking-wide text-white/45">
             Podcast
           </p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight">{slug}</h1>
-          <p className="mt-4 text-[17px] text-neutral-500">
+          <p className="mt-4 text-[17px] text-white/55">
             Not in the catalog yet — pages are wired; waiting on data.
           </p>
         </div>

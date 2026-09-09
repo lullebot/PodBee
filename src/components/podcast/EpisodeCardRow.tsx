@@ -17,15 +17,15 @@ export function EpisodeCardRow({ card }: { card: EpisodeCard }) {
   return (
     <Link
       href={`/podcasts/${card.podcast_slug}/${card.episode_slug}`}
-      className="flex gap-5 items-center group py-5 border-b border-black/[0.06] last:border-0"
+      className="flex gap-5 items-center group py-5 border-b border-white/10 last:border-0"
     >
       <Cover src={cover} alt={card.episode_title} size="sm" />
       <div className="min-w-0 flex-1">
-        <p className="text-[17px] font-semibold text-black tracking-tight truncate group-hover:text-[#007AFF] transition-colors">
+        <p className="text-[17px] font-semibold text-white tracking-tight truncate group-hover:text-[#007AFF] transition-colors">
           {card.episode_title}
         </p>
         {meta ? (
-          <p className="mt-1 text-[13px] text-neutral-500">{meta}</p>
+          <p className="mt-1 text-[13px] text-white/55">{meta}</p>
         ) : null}
       </div>
     </Link>
