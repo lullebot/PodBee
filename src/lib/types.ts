@@ -211,3 +211,28 @@ export interface CompanyDetail {
     > & { role: PodcastCompanyRole | "primary" }
   >;
 }
+
+/** Discovery charts (IMDb-style) — Sprint 1.1 */
+export type ChartKind = "overall" | "genre" | "format";
+
+export interface Chart {
+  id: UUID;
+  slug: string;
+  title: string;
+  kind: ChartKind;
+  genre_slug: string | null;
+  description: string | null;
+}
+
+export interface ChartEntry {
+  rank: number;
+  podcast: Pick<
+    Podcast,
+    "id" | "slug" | "title" | "subtitle" | "cover_image_url" | "status"
+  > & { primary_company_name?: string | null };
+}
+
+export interface ChartBoard {
+  chart: Chart;
+  entries: ChartEntry[];
+}
