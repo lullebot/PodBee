@@ -67,8 +67,16 @@ export interface Podcast {
   rss_url: string | null;
   primary_company_id: UUID | null;
   published_at: ISODate | null;
+  rating_average: number | null;
+  rating_count: number | null;
   created_at: ISODateTime;
   updated_at: ISODateTime;
+}
+
+export interface Genre {
+  id: UUID;
+  slug: string;
+  name: string;
 }
 
 export interface Season {
@@ -146,11 +154,11 @@ export interface CreditOnWork {
   billing_order: number;
   character_name: string | null;
   work:
-    | { kind: "podcast"; podcast: Pick<Podcast, "id" | "slug" | "title" | "cover_image_url"> }
+    | { kind: "podcast"; podcast: Pick<Podcast, "id" | "slug" | "title" | "cover_image_url"> & { rating_average?: number | null; rating_count?: number | null } }
     | {
         kind: "episode";
         episode: Pick<Episode, "id" | "slug" | "title" | "cover_image_url" | "published_at">;
-        podcast: Pick<Podcast, "id" | "slug" | "title" | "cover_image_url">;
+        podcast: Pick<Podcast, "id" | "slug" | "title" | "cover_image_url"> & { rating_average?: number | null; rating_count?: number | null };
       };
 }
 
@@ -171,10 +179,18 @@ export interface EpisodeCard {
   season_title: string | null;
 }
 
+export interface ChartPlacement {
+  chart_slug: string;
+  chart_title: string;
+  rank: number;
+}
+
 export interface PodcastDetail {
   podcast: Podcast;
   primary_company: Company | null;
   companies: Array<Company & { role: PodcastCompanyRole }>;
+  genres: Genre[];
+  chart_placements: ChartPlacement[];
   seasons: Season[];
   episode_cards: EpisodeCard[];
   credits: PersonCreditRef[];

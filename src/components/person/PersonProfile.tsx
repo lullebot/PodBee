@@ -2,7 +2,6 @@ import Link from "next/link";
 import type { CreditOnWork, PersonDetail } from "@/lib/types";
 import { Card } from "@/components/ui/Card";
 import { Cover } from "@/components/ui/Cover";
-import { LinkChip } from "@/components/ui/LinkChip";
 import { formatDate } from "@/lib/format";
 
 function workHref(work: CreditOnWork["work"]): string {
@@ -26,20 +25,30 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
     .slice()
     .sort((a, b) => a.billing_order - b.billing_order);
 
+  const podcastCredits = sorted.filter((c) => c.work.kind === "podcast");
+  const episodeCredits = sorted.filter((c) => c.work.kind === "episode");
+
   return (
     <main className="min-h-screen bg-white text-black">
-      <div className="mx-auto max-w-3xl px-8 pt-24 pb-32">
-        <header className="flex flex-col sm:flex-row gap-10 items-start">
+      <div className="mx-auto max-w-3xl px-6 sm:px-8 pt-16 sm:pt-24 pb-32">
+        <Link
+          href="/"
+          className="text-[13px] font-medium text-[#007AFF] hover:opacity-80"
+        >
+          ← Charts
+        </Link>
+
+        <header className="mt-8 flex flex-col sm:flex-row gap-8 sm:gap-10 items-start">
           <Cover src={person.image_url} alt={person.display_name} size="xl" />
-          <div className="min-w-0 pt-2">
+          <div className="min-w-0 pt-1">
             <p className="text-[13px] font-medium uppercase tracking-wide text-neutral-400">
               Person
             </p>
-            <h1 className="mt-3 text-5xl sm:text-6xl font-semibold tracking-tight leading-[1.05]">
+            <h1 className="mt-2 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05]">
               {person.display_name}
             </h1>
             {person.website_url ? (
-              <div className="mt-6">
+              <div className="mt-5">
                 <a
                   href={person.website_url}
                   target="_blank"
@@ -54,24 +63,34 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
         </header>
 
         {person.bio ? (
-          <p className="mt-16 text-[17px] leading-relaxed text-neutral-700 whitespace-pre-line max-w-2xl">
+          <p className="mt-12 text-[17px] leading-relaxed text-neutral-700 whitespace-pre-line max-w-2xl">
             {person.bio}
           </p>
         ) : null}
 
-        <section className="mt-20">
-          <h2 className="text-3xl font-semibold tracking-tight">Credits</h2>
-          <Card className="mt-8 px-8">
+        <section className="mt-16">
+          <h2 className="text-2xl font-semibold tracking-tight">
+            Known for
+          </h2>
+          <p className="mt-2 text-[15px] text-neutral-500">
+            Credits across the PodBee catalog
+          </p>
+          <Card className="mt-6 px-6 sm:px-8">
             {sorted.length === 0 ? (
               <p className="py-10 text-[15px] text-neutral-400">
                 No credits yet.
               </p>
             ) : (
               <ul>
-                {sorted.map((c, i) => {
+                {[...podcastCredits, ...episodeCredits].map((c, i) => {
                   const published =
                     c.work.kind === "episode"
                       ? formatDate(c.work.episode.published_at)
+                      : null;
+                  const rating =
+                    c.work.kind === "podcast"
+                      ? (c.work.podcast as { rating_average?: number | null })
+                          .rating_average
                       : null;
                   return (
                     <li
@@ -95,15 +114,11 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
                           {c.work.kind === "episode"
                             ? ` · ${c.work.podcast.title}`
                             : ""}
+                          {rating != null ? ` · ${rating.toFixed(1)}/10` : ""}
                           {published ? ` · ${published}` : ""}
                           {c.character_name ? ` · as ${c.character_name}` : ""}
                         </p>
                       </div>
-                      {c.work.kind === "podcast" ? (
-                        <LinkChip href={`/podcasts/${c.work.podcast.slug}`}>
-                          Show
-                        </LinkChip>
-                      ) : null}
                     </li>
                   );
                 })}
