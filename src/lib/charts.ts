@@ -1,26 +1,25 @@
 import { supabase } from "@/lib/supabase";
-import type { Chart, ChartBoard, ChartEntry, ChartKind } from "@/lib/types";
+import type { Chart, ChartBoard, ChartKind } from "@/lib/types";
 
+/** Matches live chart_rankings view (schema v0.2 / migration 003). */
 export interface ChartRankingRow {
-  chart_id: string;
   chart_slug: string;
   chart_title: string;
-  chart_kind: ChartKind;
+  chart_type: ChartKind | string;
   genre_slug: string | null;
   genre_name: string | null;
   rank: number;
+  score: number | null;
+  snapshot_at: string | null;
   podcast_id: string;
   podcast_slug: string;
   podcast_title: string;
-  podcast_subtitle: string | null;
-  podcast_cover_url: string | null;
-  podcast_status: "active" | "completed" | "hiatus" | "cancelled";
+  cover_image_url: string | null;
   rating_average: number | null;
   rating_count: number | null;
-  primary_company_name: string | null;
+  status: "active" | "completed" | "hiatus" | "cancelled";
 }
 
-/** Demo boards so the home looks like IMDb while ranking tables / seed land. */
 function demoBoards(): ChartBoard[] {
   const covers = [
     "https://picsum.photos/seed/podbee1/400/400",
@@ -104,12 +103,17 @@ function boardsFromRankings(rows: ChartRankingRow[]): ChartBoard[] {
   for (const row of rows) {
     let board = bySlug.get(row.chart_slug);
     if (!board) {
+      const kind = (row.chart_type === "genre" ||
+      row.chart_type === "overall" ||
+      row.chart_type === "format"
+        ? row.chart_type
+        : "overall") as ChartKind;
       board = {
         chart: {
-          id: row.chart_id,
+          id: row.chart_slug,
           slug: row.chart_slug,
           title: row.chart_title,
-          kind: row.chart_kind,
+          kind,
           genre_slug: row.genre_slug,
           description: null,
         },
@@ -123,10 +127,17 @@ function boardsFromRankings(rows: ChartRankingRow[]): ChartBoard[] {
         id: row.podcast_id,
         slug: row.podcast_slug,
         title: row.podcast_title,
-        subtitle: row.podcast_subtitle,
-        cover_image_url: row.podcast_cover_url,
-        status: row.podcast_status,
-        primary_company_name: row.primary_company_name,
+        subtitle:
+          row.rating_average != null
+            ? `${row.rating_average.toFixed(1)}/10${
+                row.rating_count != null
+                  ? ` · ${row.rating_count.toLocaleString()} ratings`
+                  : ""
+              }`
+            : null,
+        cover_image_url: row.cover_image_url,
+        status: row.status,
+        primary_company_name: null,
       },
     });
   }
@@ -167,18 +178,4 @@ export async function getChartBoards(): Promise<{
   } catch {
     return { boards: demoBoards(), source: "demo" };
   }
-}
-
-export async function getChartBoard(
-  slug: string
-): Promise<ChartBoard | null> {
-  const { data, error } = await supabase
-    .from("chart_rankings")
-    .select("*")
-    .eq("chart_slug", slug)
-    .order("rank");
-
-  if (error || !data || data.length === 0) return null;
-  const boards = boardsFromRankings(data as ChartRankingRow[]);
-  return boards[0] ?? null;
 }
