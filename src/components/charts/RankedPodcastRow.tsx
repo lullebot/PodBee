@@ -13,6 +13,8 @@ export function RankedPodcastRow({ entry }: { entry: ChartEntry }) {
   ]
     .filter(Boolean)
     .join(" · ");
+  const podbee =
+    typeof podcast.podbee_score === "number" ? podcast.podbee_score : null;
 
   return (
     <Link
@@ -29,6 +31,14 @@ export function RankedPodcastRow({ entry }: { entry: ChartEntry }) {
         </p>
         {meta ? (
           <p className="mt-0.5 text-[13px] text-white/55 truncate">{meta}</p>
+        ) : null}
+        {podbee != null ? (
+          <p className="mt-1 text-[12px] text-white/45 truncate">
+            PodBee Score (popularity + activity){" "}
+            <span className="tabular-nums text-white/70">
+              {Number.isInteger(podbee) ? podbee : podbee.toFixed(1)}
+            </span>
+          </p>
         ) : null}
       </div>
       <div className="shrink-0 pl-2">

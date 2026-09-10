@@ -271,9 +271,11 @@ export interface ChartEntry {
     "id" | "slug" | "title" | "subtitle" | "cover_image_url" | "status"
   > & {
     primary_company_name?: string | null;
+    primary_company_slug?: string | null;
     rating_average?: number | null;
     rating_count?: number | null;
     episode_count?: number | null;
+    podbee_score?: number | null;
   };
 }
 

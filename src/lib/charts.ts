@@ -19,6 +19,14 @@ export interface ChartRankingRow {
   rating_average: number | null;
   rating_count: number | null;
   status: "active" | "completed" | "hiatus" | "cancelled";
+  primary_company_name?: string | null;
+  primary_company_slug?: string | null;
+  episode_count?: number | null;
+  podbee_score?: number | null;
+  trend_score?: number | null;
+  freshness_score?: number | null;
+  volume_score?: number | null;
+  score_updated_at?: string | null;
 }
 
 function demoBoards(): ChartBoard[] {
@@ -157,9 +165,15 @@ function boardsFromRankings(rows: ChartRankingRow[]): ChartBoard[] {
         subtitle: null,
         cover_image_url: row.cover_image_url,
         status: row.status,
-        primary_company_name: null,
+        primary_company_name: row.primary_company_name ?? null,
         rating_average: row.rating_average,
         rating_count: row.rating_count,
+        episode_count:
+          typeof row.episode_count === "number" && row.episode_count > 0
+            ? row.episode_count
+            : null,
+        podbee_score: row.podbee_score ?? null,
+        primary_company_slug: row.primary_company_slug ?? null,
       },
     });
   }
@@ -251,6 +265,9 @@ async function enrichChartEntries(entries: ChartEntry[]): Promise<ChartEntry[]> 
         companyByPodcast.get(entry.podcast.id) ??
         null,
       episode_count: (() => {
+        if (typeof entry.podcast.episode_count === "number" && entry.podcast.episode_count > 0) {
+          return entry.podcast.episode_count;
+        }
         const n = episodesByPodcast.get(entry.podcast.id);
         return n && n > 0 ? n : null;
       })(),
@@ -297,7 +314,14 @@ export const getChartBoardBySlug = cache(async (
       const boards = boardsFromRankings(data as ChartRankingRow[]);
       const board = boards[0];
       if (board) {
-        const entries = await enrichChartEntries(board.entries);
+        const needsJoin = board.entries.some(
+          (e) =>
+            !e.podcast.primary_company_name ||
+            e.podcast.episode_count == null
+        );
+        const entries = needsJoin
+          ? await enrichChartEntries(board.entries)
+          : board.entries;
         return { board: { ...board, entries }, source: "live" };
       }
     }
