@@ -1,11 +1,12 @@
 import { AdSlot } from "@/components/ads/AdSlot";
 import Link from "next/link";
 import type { PodcastDetail } from "@/lib/types";
-import { Card } from "@/components/ui/Card";
 import { Cover } from "@/components/ui/Cover";
-import { LinkChip } from "@/components/ui/LinkChip";
 import { StarRating } from "@/components/ui/StarRating";
-import { EpisodeCardRow } from "@/components/podcast/EpisodeCardRow";
+import { EpisodeList } from "@/components/podcast/EpisodeList";
+import { TitleSubnav } from "@/components/podcast/TitleSubnav";
+import { TopCast } from "@/components/podcast/TopCast";
+import { formatYearRange } from "@/lib/format";
 
 export function PodcastProfile({ data }: { data: PodcastDetail }) {
   const {
@@ -17,10 +18,26 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
     genres,
     chart_placements,
     similar,
+    seasons,
+    first_published_at,
+    latest_published_at,
   } = data;
-  const cast = credits
-    .slice()
-    .sort((a, b) => a.billing_order - b.billing_order);
+
+  const years = formatYearRange(first_published_at, latest_published_at);
+  const meta = [
+    primary_company?.name ?? null,
+    episode_total > 0
+      ? `${episode_total.toLocaleString()} episode${episode_total === 1 ? "" : "s"}`
+      : null,
+    years,
+  ].filter(Boolean);
+
+  const nav = [
+    podcast.description ? { href: "#overview", label: "Overview" } : null,
+    credits.length > 0 ? { href: "#cast", label: "Cast" } : null,
+    { href: "#episodes", label: "Episodes" },
+    similar.length > 0 ? { href: "#more-like-this", label: "More like this" } : null,
+  ].filter((x): x is { href: string; label: string } => x != null);
 
   return (
     <main className="min-h-screen bg-[#0B1C2C] text-white">
@@ -51,16 +68,17 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
               </p>
             ) : null}
 
-            <div className="mt-6">
+            <div className="mt-5">
               <StarRating
                 average={podcast.rating_average}
                 count={podcast.rating_count}
                 size="lg"
+                empty="dash"
               />
             </div>
 
             {genres.length > 0 ? (
-              <div className="mt-6 flex flex-wrap gap-2">
+              <div className="mt-5 flex flex-wrap gap-2">
                 {genres.map((g) => (
                   <span
                     key={g.id}
@@ -72,12 +90,18 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
               </div>
             ) : null}
 
+            {meta.length > 0 ? (
+              <p className="mt-5 text-[15px] text-white/65 leading-snug">
+                {meta.join(" · ")}
+              </p>
+            ) : null}
+
             {chart_placements.length > 0 ? (
-              <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-[14px]">
+              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[14px]">
                 {chart_placements.map((c) => (
                   <Link
                     key={c.chart_slug}
-                    href={`/#${c.chart_slug}`}
+                    href={`/charts/${c.chart_slug}`}
                     className="text-[#007AFF] font-medium hover:opacity-80"
                   >
                     #{c.rank} {c.chart_title}
@@ -85,23 +109,17 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
                 ))}
               </div>
             ) : null}
-
-            <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 items-center">
-              {primary_company ? (
-                <LinkChip href={`/companies/${primary_company.slug}`}>
-                  {primary_company.name}
-                </LinkChip>
-              ) : null}
-            </div>
           </div>
         </header>
 
-        <div className="mt-12">
+        <TitleSubnav items={nav} />
+
+        <div className="mt-10">
           <AdSlot label="Title" size="banner" />
         </div>
 
         {podcast.description ? (
-          <section className="mt-14">
+          <section id="overview" className="mt-14 scroll-mt-28">
             <h2 className="text-2xl font-semibold tracking-tight">Storyline</h2>
             <p className="mt-4 text-[17px] leading-relaxed text-white/75 whitespace-pre-line max-w-2xl">
               {podcast.description}
@@ -109,89 +127,38 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
           </section>
         ) : null}
 
-        {cast.length > 0 ? (
-          <section className="mt-16">
-            <div className="flex items-baseline justify-between gap-4">
-              <h2 className="text-2xl font-semibold tracking-tight">Top cast</h2>
-              <span className="text-[13px] text-white/45">
-                {cast.length} credited
-              </span>
-            </div>
-            <Card className="mt-6 px-6 sm:px-8 py-2">
-              <ul>
-                {cast.map((c) => (
-                  <li
-                    key={`${c.person.id}-${c.role_id}`}
-                    className="flex items-center justify-between gap-6 py-4 border-b border-white/10 last:border-0"
-                  >
-                    <div className="flex items-center gap-4 min-w-0">
-                      <Cover
-                        src={c.person.image_url}
-                        alt={c.person.display_name}
-                        size="sm"
-                      />
-                      <LinkChip href={`/people/${c.person.slug}`}>
-                        {c.person.display_name}
-                      </LinkChip>
-                    </div>
-                    <span className="text-[15px] text-white/55 shrink-0">
-                      {c.role_label}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          </section>
-        ) : null}
+        {credits.length > 0 ? <TopCast credits={credits} /> : null}
 
+        <EpisodeList
+          cards={episode_cards}
+          total={episode_total}
+          seasons={seasons}
+        />
 
         {similar.length > 0 ? (
-          <section className="mt-16">
-            <h2 className="text-2xl font-semibold tracking-tight">More like this</h2>
-            <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-5 sm:gap-6">
+          <section id="more-like-this" className="mt-16 scroll-mt-28">
+            <h2 className="text-2xl font-semibold tracking-tight">
+              More like this
+            </h2>
+            <div className="mt-6 grid grid-cols-3 sm:grid-cols-4 gap-3 sm:gap-4">
               {similar.map((s) => (
-                <Link
-                  key={s.id}
-                  href={`/podcasts/${s.slug}`}
-                  className="group"
-                >
+                <Link key={s.id} href={`/podcasts/${s.slug}`} className="group min-w-0">
                   <Cover src={s.cover_image_url} alt={s.title} size="fill" />
-                  <p className="mt-3 text-[15px] font-semibold tracking-tight text-white group-hover:text-[#007AFF] transition-colors line-clamp-2">
+                  <p className="mt-2 text-[13px] sm:text-[14px] font-semibold tracking-tight text-white group-hover:text-[#007AFF] transition-colors line-clamp-2">
                     {s.title}
                   </p>
-                  {s.rating_average != null ? (
-                    <p className="mt-1 text-[13px] text-white/55 tabular-nums">
-                      {s.rating_average.toFixed(1)}/10
-                    </p>
-                  ) : null}
+                  <div className="mt-1">
+                    <StarRating
+                      average={s.rating_average}
+                      count={s.rating_count}
+                      size="sm"
+                    />
+                  </div>
                 </Link>
               ))}
             </div>
           </section>
         ) : null}
-
-        <section className="mt-16">
-          <div className="flex items-baseline justify-between gap-4">
-            <h2 className="text-2xl font-semibold tracking-tight">Episodes</h2>
-            {episode_total > 0 ? (
-              <span className="text-[13px] text-white/45">
-                Showing {Math.min(episode_cards.length, episode_total)} of{" "}
-                {episode_total}
-              </span>
-            ) : null}
-          </div>
-          <Card className="mt-6 px-6 sm:px-8">
-            {episode_cards.length === 0 ? (
-              <p className="py-10 text-[15px] text-white/45">
-                No episodes in the catalog yet.
-              </p>
-            ) : (
-              episode_cards.map((card) => (
-                <EpisodeCardRow key={card.id} card={card} />
-              ))
-            )}
-          </Card>
-        </section>
       </div>
     </main>
   );

@@ -18,3 +18,32 @@ export function formatDate(iso: string | null | undefined): string | null {
     day: "numeric",
   });
 }
+
+export function yearOf(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.getFullYear();
+}
+
+/** IMDb-style year span: 2014–2026, or a single year, or null. */
+export function formatYearRange(
+  first: string | null | undefined,
+  latest: string | null | undefined
+): string | null {
+  const a = yearOf(first);
+  const b = yearOf(latest);
+  if (a != null && b != null && a !== b) return `${a}–${b}`;
+  if (b != null) return String(b);
+  if (a != null) return String(a);
+  return null;
+}
+
+export function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  const first = parts[0][0] ?? "";
+  const last = parts[parts.length - 1][0] ?? "";
+  return (first + last).toUpperCase();
+}

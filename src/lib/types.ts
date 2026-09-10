@@ -1,8 +1,8 @@
 /**
  * PodBee (cast.fm) — locked API / DB types v0
- * Source of truth: 001_core_schema.sql
+ * Source of truth: 001_core_schema.sql + live chart_rankings view
  * Contract for Next.js App Router + Supabase client (no GraphQL, no player).
- * Mirrored from PodBee Database Lead 2026-09-09.
+ * Mirrored from PodBee Database Lead 2026-09-09; chart_rankings columns 2026-09-10.
  */
 
 export type UUID = string;
@@ -154,11 +154,20 @@ export interface CreditOnWork {
   billing_order: number;
   character_name: string | null;
   work:
-    | { kind: "podcast"; podcast: Pick<Podcast, "id" | "slug" | "title" | "cover_image_url"> & { rating_average?: number | null; rating_count?: number | null } }
+    | {
+        kind: "podcast";
+        podcast: Pick<
+          Podcast,
+          "id" | "slug" | "title" | "cover_image_url" | "published_at"
+        > & { rating_average?: number | null; rating_count?: number | null };
+      }
     | {
         kind: "episode";
         episode: Pick<Episode, "id" | "slug" | "title" | "cover_image_url" | "published_at">;
-        podcast: Pick<Podcast, "id" | "slug" | "title" | "cover_image_url"> & { rating_average?: number | null; rating_count?: number | null };
+        podcast: Pick<
+          Podcast,
+          "id" | "slug" | "title" | "cover_image_url" | "published_at"
+        > & { rating_average?: number | null; rating_count?: number | null };
       };
 }
 
@@ -205,6 +214,8 @@ export interface PodcastDetail {
   seasons: Season[];
   episode_cards: EpisodeCard[];
   episode_total: number;
+  first_published_at: ISODateTime | null;
+  latest_published_at: ISODateTime | null;
   credits: PersonCreditRef[];
   similar: SimilarPodcast[];
 }
@@ -253,16 +264,62 @@ export interface Chart {
   description: string | null;
 }
 
+/**
+ * Live `chart_rankings` view row.
+ * Score columns stay null until Pipeline backfill; company + episode_count
+ * are denormalized on the view (no client-side join).
+ */
+export interface ChartRankingRow {
+  chart_slug: string;
+  chart_title: string;
+  chart_type: ChartKind | string;
+  genre_slug: string | null;
+  genre_name: string | null;
+  rank: number;
+  score: number | null;
+  snapshot_at: ISODateTime | null;
+  podcast_id: UUID;
+  podcast_slug: string;
+  podcast_title: string;
+  cover_image_url: string | null;
+  rating_average: number | null;
+  rating_count: number | null;
+  status: PodcastStatus;
+  primary_company_name: string | null;
+  primary_company_slug: string | null;
+  episode_count: number | null;
+  podbee_score: number | null;
+  trend_score: number | null;
+  freshness_score: number | null;
+  volume_score: number | null;
+  score_updated_at: ISODateTime | null;
+}
+
+/** Exact UI copy for the catalog popularity score — never a user ★ rating. */
+export const PODBEE_SCORE_LABEL = "PodBee Score (popularity + activity)";
+
+export interface ChartPodcastSummary {
+  id: UUID;
+  slug: string;
+  title: string;
+  subtitle: string | null;
+  cover_image_url: string | null;
+  status: PodcastStatus;
+  primary_company_name: string | null;
+  primary_company_slug: string | null;
+  rating_average: number | null;
+  rating_count: number | null;
+  episode_count: number | null;
+  podbee_score: number | null;
+  trend_score: number | null;
+  freshness_score: number | null;
+  volume_score: number | null;
+  score_updated_at: ISODateTime | null;
+}
+
 export interface ChartEntry {
   rank: number;
-  podcast: Pick<
-    Podcast,
-    "id" | "slug" | "title" | "subtitle" | "cover_image_url" | "status"
-  > & {
-    primary_company_name?: string | null;
-    rating_average?: number | null;
-    rating_count?: number | null;
-  };
+  podcast: ChartPodcastSummary;
 }
 
 export interface ChartBoard {
