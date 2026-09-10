@@ -6,12 +6,18 @@ import { KnownFor } from "@/components/person/KnownFor";
 
 export function PersonProfile({ data }: { data: PersonDetail }) {
   const { person, credits } = data;
-  const showIds = new Set(credits.map((c) => c.work.podcast.id));
-  const episodeCreditCount = credits.filter((c) => c.work.kind === "episode").length;
-  const counts = [
-    `${showIds.size} show${showIds.size === 1 ? "" : "s"}`,
-    `${episodeCreditCount} episode credit${episodeCreditCount === 1 ? "" : "s"}`,
-  ].join(" · ");
+  const showCredits = credits.filter((c) => c.work.kind === "podcast");
+  const showCount = new Set(showCredits.map((c) => c.work.podcast.id)).size;
+  const episodeCreditCount = credits.filter((c) => c.work.kind === "episode")
+    .length;
+
+  const showLabel =
+    showCount > 0
+      ? `${showCount} show${showCount === 1 ? "" : "s"}`
+      : null;
+  const episodeLabel = `${episodeCreditCount} episode credit${
+    episodeCreditCount === 1 ? "" : "s"
+  }`;
 
   return (
     <main className="min-h-screen bg-[#0B1C2C] text-white">
@@ -43,7 +49,19 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
                 {person.bio}
               </p>
             ) : null}
-            <p className="mt-4 text-[15px] text-white/55">{counts}</p>
+            {credits.length > 0 ? (
+              <p className="mt-4 text-[15px] text-white/55">
+                {showLabel ? (
+                  <>
+                    {showLabel}
+                    {" · "}
+                  </>
+                ) : null}
+                <a href="#episodes" className="text-[#007AFF] hover:opacity-80">
+                  {episodeLabel}
+                </a>
+              </p>
+            ) : null}
             {person.website_url ? (
               <div className="mt-4">
                 <a

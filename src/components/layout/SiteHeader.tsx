@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SearchField } from "@/components/layout/SearchField";
 
 export function SiteHeader() {
   return (
@@ -11,12 +12,7 @@ export function SiteHeader() {
           PodBee
         </Link>
         <form action="/search" method="get" className="flex-1 max-w-md">
-          <input
-            type="search"
-            name="q"
-            placeholder="Search podcasts & people"
-            className="w-full rounded-full bg-white/5 border border-white/15 px-4 py-2 text-[14px] text-white placeholder:text-white/35 outline-none focus:border-[#007AFF]"
-          />
+          <SearchField />
         </form>
         <nav className="hidden sm:flex items-center gap-4 text-[13px] text-white/55">
           <Link href="/#top-overall" className="hover:text-white">
