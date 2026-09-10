@@ -115,12 +115,12 @@ export function SearchField({
         }}
       />
       {open && hits.length > 0 ? (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute z-50 mt-2 w-full overflow-hidden rounded-[16px] border border-white/10 bg-[#12253A] shadow-lg"
-        >
-          {hits.map((hit, i) => {
+        <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-[16px] border border-white/15 bg-[#0F2033] shadow-[0_16px_48px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
+          <p className="px-3.5 pt-2.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-white/40">
+            People
+          </p>
+          <ul id={listId} role="listbox">
+            {hits.map((hit, i) => {
             const meta = personTypeaheadMeta(hit);
             return (
               <li key={hit.id} role="option" aria-selected={i === active}>
@@ -153,7 +153,8 @@ export function SearchField({
               </li>
             );
           })}
-        </ul>
+          </ul>
+        </div>
       ) : null}
     </div>
   );
