@@ -25,12 +25,29 @@ API_BASE = "https://api.podcastindex.org/api/1.0"
 ENV_KEY = "PODCAST_INDEX_API_KEY"
 ENV_SECRET = "PODCAST_INDEX_API_SECRET"
 
-# One small page per home-page chart. Never paginate past this.
+# One small /podcasts/trending page per category. Never paginate or crawl
+# the full index. Category strings are Podcast Index / iTunes parent names.
 TRENDING_QUERIES: tuple[tuple[str, str | None], ...] = (
     ("top-overall", None),
     ("top-comedy", "Comedy"),
     ("top-true-crime", "True Crime"),
     ("top-news", "News"),
+    ("top-society-culture", "Society & Culture"),
+    ("top-technology", "Technology"),
+    ("top-sports", "Sports"),
+    ("top-business", "Business"),
+    ("top-history", "History"),
+    ("top-health-fitness", "Health & Fitness"),
+    ("top-science", "Science"),
+    ("top-arts", "Arts"),
+    ("top-music", "Music"),
+    ("top-education", "Education"),
+    ("top-fiction", "Fiction"),
+    ("top-leisure", "Leisure"),
+    ("top-kids-family", "Kids & Family"),
+    ("top-tv-film", "TV & Film"),
+    ("top-government", "Government"),
+    ("top-religion-spirituality", "Religion & Spirituality"),
 )
 DEFAULT_PAGE_SIZE = 15
 MAX_PAGE_SIZE = 25
@@ -71,7 +88,7 @@ def trending_feed_urls(
     max_per_chart: int = DEFAULT_PAGE_SIZE,
     timeout: float = 30.0,
 ) -> list[str]:
-    """Return unique public RSS URLs from four small trending pages."""
+    """Return unique public RSS URLs from small, unpaginated trending pages."""
     page = max(1, min(int(max_per_chart), MAX_PAGE_SIZE))
     urls: list[str] = []
     seen: set[str] = set()

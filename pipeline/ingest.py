@@ -16,6 +16,7 @@ from pipeline.extract import CHART_SLUGS
 from pipeline.podcastindex import (
     ENV_KEY,
     ENV_SECRET,
+    TRENDING_QUERIES,
     credentials_from_env,
     merge_feed_urls,
     trending_feed_urls,
@@ -140,8 +141,9 @@ def main(argv: list[str] | None = None) -> int:
         log.info("RSS-only mode: skipping Podcast Index")
     elif pi_creds:
         log.info(
-            "Podcast Index trending enabled (4 small pages). "
-            "Do not crawl the full index — weekly dump is the bulk path."
+            "Podcast Index trending enabled (%s small pages, max≤25 each). "
+            "Do not crawl the full index — weekly dump is the bulk path.",
+            len(TRENDING_QUERIES),
         )
         try:
             discovered = trending_feed_urls(
