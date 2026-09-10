@@ -221,25 +221,24 @@ async function enrichChartEntries(entries: ChartEntry[]): Promise<ChartEntry[]> 
       }
     }
 
-    // Exact counts via paginated podcast_id rows — nested episodes(count) was
-    // under-counting (PostgREST embed page size), so don't use it.
-    let from = 0;
-    const page = 1000;
-    while (true) {
-      const { data, error } = await supabase
-        .from("episodes")
-        .select("podcast_id")
-        .in("podcast_id", idChunk)
-        .range(from, from + page - 1);
-      if (error || !data || data.length === 0) break;
-      for (const row of data as Array<{ podcast_id: string }>) {
-        episodesByPodcast.set(
-          row.podcast_id,
-          (episodesByPodcast.get(row.podcast_id) ?? 0) + 1
-        );
+    // Exact per-show counts. Nested embeds and paged .in() selects under-count
+    // when PostgREST max-rows is small (TAL showed 15 instead of the real total).
+    const countChunk = chunk(idChunk, 20);
+    for (const ids of countChunk) {
+      const results = await Promise.all(
+        ids.map(async (id) => {
+          const { count, error } = await supabase
+            .from("episodes")
+            .select("id", { count: "exact", head: true })
+            .eq("podcast_id", id);
+          return [id, error ? null : count] as const;
+        })
+      );
+      for (const [id, count] of results) {
+        if (typeof count === "number" && count > 0) {
+          episodesByPodcast.set(id, count);
+        }
       }
-      if (data.length < page) break;
-      from += page;
     }
   }
 
