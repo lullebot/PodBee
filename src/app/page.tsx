@@ -89,9 +89,7 @@ export default async function HomePage() {
         </div>
 
         {boards.map((board) => (
-          <div key={board.chart.slug} id={board.chart.slug}>
-            <ChartSection board={board} />
-          </div>
+          <ChartSection key={board.chart.slug} board={board} />
         ))}
 
         <p className="mt-16 text-[13px] text-white/35">
