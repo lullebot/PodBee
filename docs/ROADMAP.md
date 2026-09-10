@@ -53,6 +53,13 @@ Out of scope: auth/ratings, freemium, uncapped dump, paid upgrades, player.
 - [ ] Similar-taste recommendations from ratings
 - [ ] Freemium / CAST Pro / other non-ad revenue
 
+## Product goals (Lukas — 2026-09-10)
+Inform next bets after Business Lead opens them. Sprint 3 still = capped catalog + IMDb polish (charts list pages, title densify, person Known-for). Ask Database before new entities/columns.
+
+1. **Interim show ranking** — how charts rank shows until we have enough on-site user reviews/ratings (auth/reviews still parked).
+2. **Person → episode appearance search** — e.g. search “Barack Obama” and see every podcast episode they appeared on (not just people/podcast title match).
+3. **Richer people & credits** — starring/hosts on titles; person pages with bio/basic facts (e.g. birthdate when known), appearance counts, podcasts list.
+
 ## Notes
 - Short-term revenue = website ads only (banners parked until Sprint 3 feels done).
 - Community ratings + easy login are the eventual IMDb moat — later, after catalog + ads.
