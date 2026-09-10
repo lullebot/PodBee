@@ -48,9 +48,20 @@ export default async function SearchPage({
             Type at least 2 characters.
           </p>
         ) : hits.length === 0 ? (
-          <p className="mt-12 text-[15px] text-white/45">
-            No matches for “{q}”.
-          </p>
+          <div className="mt-12 rounded-[24px] border border-dashed border-white/20 bg-white/[0.03] px-6 py-12 text-center">
+            <p className="text-[17px] font-semibold tracking-tight">
+              No matches for “{q}”
+            </p>
+            <p className="mt-3 text-[15px] text-white/50 max-w-md mx-auto">
+              Try a shorter name, or browse the charts while the catalog grows.
+            </p>
+            <a
+              href="/#top-overall"
+              className="inline-block mt-6 text-[15px] font-medium text-[#007AFF] hover:opacity-80"
+            >
+              Browse Top Overall →
+            </a>
+          </div>
         ) : (
           <div className="mt-12 space-y-12">
             {podcasts.length > 0 ? (

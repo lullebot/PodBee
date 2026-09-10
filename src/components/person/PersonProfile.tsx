@@ -77,9 +77,20 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
           </p>
           <Card className="mt-6 px-6 sm:px-8">
             {sorted.length === 0 ? (
-              <p className="py-10 text-[15px] text-white/45">
-                No credits yet.
-              </p>
+              <div className="py-12 text-center px-4">
+                <p className="text-[15px] text-white/55">
+                  No credits in the catalog yet.
+                </p>
+                <p className="mt-2 text-[13px] text-white/35">
+                  Hosts and guests fill in as shows get richer credit data.
+                </p>
+                <a
+                  href="/#top-overall"
+                  className="inline-block mt-5 text-[14px] font-medium text-[#007AFF]"
+                >
+                  Browse charts →
+                </a>
+              </div>
             ) : (
               <ul>
                 {[...podcastCredits, ...episodeCredits].map((c, i) => {
