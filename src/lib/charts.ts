@@ -183,33 +183,6 @@ function chunk<T>(items: T[], size: number): T[][] {
   return out;
 }
 
-function companyNameFromEmbed(value: unknown): string | null {
-  if (!value) return null;
-  if (Array.isArray(value)) {
-    const first = value[0] as { name?: string } | undefined;
-    return first?.name ?? null;
-  }
-  if (typeof value === "object" && "name" in value) {
-    const name = (value as { name?: string }).name;
-    return name ?? null;
-  }
-  return null;
-}
-
-function episodeCountFromEmbed(value: unknown): number | null {
-  if (value == null) return null;
-  if (typeof value === "number") return value;
-  if (Array.isArray(value)) {
-    const first = value[0] as { count?: number } | undefined;
-    return typeof first?.count === "number" ? first.count : null;
-  }
-  if (typeof value === "object" && "count" in value) {
-    const n = (value as { count?: number }).count;
-    return typeof n === "number" ? n : null;
-  }
-  return null;
-}
-
 /** Join network name + episode counts onto chart rows. Omit when the join has nothing. */
 async function enrichChartEntries(entries: ChartEntry[]): Promise<ChartEntry[]> {
   const ids = [...new Set(entries.map((e) => e.podcast.id))];
@@ -219,26 +192,6 @@ async function enrichChartEntries(entries: ChartEntry[]): Promise<ChartEntry[]> 
   const episodesByPodcast = new Map<string, number>();
 
   for (const idChunk of chunk(ids, 80)) {
-    const counted = await supabase
-      .from("podcasts")
-      .select("id, primary_company_id, companies(name), episodes(count)")
-      .in("id", idChunk);
-
-    if (!counted.error && counted.data) {
-      for (const row of counted.data as Array<{
-        id: string;
-        primary_company_id: string | null;
-        companies: unknown;
-        episodes: unknown;
-      }>) {
-        const name = companyNameFromEmbed(row.companies);
-        if (name) companyByPodcast.set(row.id, name);
-        const n = episodeCountFromEmbed(row.episodes);
-        if (typeof n === "number") episodesByPodcast.set(row.id, n);
-      }
-      continue;
-    }
-
     const { data: pods } = await supabase
       .from("podcasts")
       .select("id, primary_company_id")
@@ -268,15 +221,25 @@ async function enrichChartEntries(entries: ChartEntry[]): Promise<ChartEntry[]> 
       }
     }
 
-    const countedOnly = await supabase
-      .from("podcasts")
-      .select("id, episodes(count)")
-      .in("id", idChunk);
-    if (!countedOnly.error && countedOnly.data) {
-      for (const row of countedOnly.data as Array<{ id: string; episodes: unknown }>) {
-        const n = episodeCountFromEmbed(row.episodes);
-        if (typeof n === "number") episodesByPodcast.set(row.id, n);
+    // Exact counts via paginated podcast_id rows — nested episodes(count) was
+    // under-counting (PostgREST embed page size), so don't use it.
+    let from = 0;
+    const page = 1000;
+    while (true) {
+      const { data, error } = await supabase
+        .from("episodes")
+        .select("podcast_id")
+        .in("podcast_id", idChunk)
+        .range(from, from + page - 1);
+      if (error || !data || data.length === 0) break;
+      for (const row of data as Array<{ podcast_id: string }>) {
+        episodesByPodcast.set(
+          row.podcast_id,
+          (episodesByPodcast.get(row.podcast_id) ?? 0) + 1
+        );
       }
+      if (data.length < page) break;
+      from += page;
     }
   }
 
@@ -288,7 +251,10 @@ async function enrichChartEntries(entries: ChartEntry[]): Promise<ChartEntry[]> 
         entry.podcast.primary_company_name ??
         companyByPodcast.get(entry.podcast.id) ??
         null,
-      episode_count: episodesByPodcast.get(entry.podcast.id) ?? null,
+      episode_count: (() => {
+        const n = episodesByPodcast.get(entry.podcast.id);
+        return n && n > 0 ? n : null;
+      })(),
     },
   }));
 }
