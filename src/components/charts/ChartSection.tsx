@@ -8,7 +8,10 @@ export function ChartSection({ board }: { board: ChartBoard }) {
   const thin = n > 0 && n < THIN;
 
   return (
-    <section className="mt-14 sm:mt-16">
+    <section
+      id={board.chart.slug}
+      className="mt-14 sm:mt-16 scroll-mt-20 sm:scroll-mt-24"
+    >
       <div className="flex items-end justify-between gap-4 px-1">
         <div>
           <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight">
@@ -39,7 +42,7 @@ export function ChartSection({ board }: { board: ChartBoard }) {
               Still growing — more genre-fit shows coming.
             </p>
           ) : null}
-          <div className="mt-6 -mx-6 sm:-mx-8 px-6 sm:px-8 overflow-x-auto pb-2">
+          <div className="mt-8 -mx-6 sm:-mx-8 px-6 sm:px-8 pt-2 overflow-x-auto pb-2">
             <div className="flex gap-4 sm:gap-5 min-w-min">
               {board.entries.map((entry) => (
                 <PosterCard
