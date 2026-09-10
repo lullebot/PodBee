@@ -300,6 +300,8 @@ export async function searchEpisodeAppearances(
   if (term.length < 2) return [];
   const pattern = `%${term}%`;
 
+  const wordCount = term.split(/\s+/).filter(Boolean).length;
+
   const { data: nameMatches } = await supabase
     .from("people")
     .select("id")
@@ -310,6 +312,8 @@ export async function searchEpisodeAppearances(
     .map((p) => (p as { id?: string }).id)
     .filter((id): id is string => typeof id === "string" && id.length > 0);
 
+  // Single-token queries use credits only. Title ILIKE is too noisy
+  // ("obama" → episode about Obama, "serial" → serial-killer docs).
   const [creditsRes, titleRes] = await Promise.all([
     ids.length > 0
       ? supabase
@@ -320,13 +324,15 @@ export async function searchEpisodeAppearances(
           .in("person_id", ids)
           .limit(240)
       : Promise.resolve({ data: [] as CreditRow[] }),
-    supabase
-      .from("episodes")
-      .select(
-        "id, slug, title, published_at, cover_image_url, podcasts(slug, title, cover_image_url)"
-      )
-      .ilike("title", pattern)
-      .limit(12),
+    wordCount >= 2
+      ? supabase
+          .from("episodes")
+          .select(
+            "id, slug, title, published_at, cover_image_url, podcasts(slug, title, cover_image_url)"
+          )
+          .ilike("title", pattern)
+          .limit(12)
+      : Promise.resolve({ data: [] as NestedEpisode[] }),
   ]);
 
   const fromCredits = (creditsRes.data ?? []).flatMap((row) => {

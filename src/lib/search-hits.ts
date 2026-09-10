@@ -49,11 +49,16 @@ export function searchNameRank(name: string, term: string): number {
   return 4;
 }
 
-/** Guest-style query: a person name matches as a word, not a stray substring. */
+/**
+ * Guest-style query: a person name matches as a word, and the query is not
+ * an exact podcast title (so "Serial" still leads with the show).
+ */
 export function isGuestIntent(
   people: PersonSearchHit[],
-  q: string
+  q: string,
+  podcasts: PodcastSearchHit[] = []
 ): boolean {
+  if (podcasts.some((p) => searchNameRank(p.title, q) === 0)) return false;
   return people.some((p) => searchNameRank(p.display_name, q) <= 3);
 }
 

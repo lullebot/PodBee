@@ -25,7 +25,7 @@ export default async function SearchPage({
   const people = hits.filter((h) => h.kind === "person");
   const episodes = hits.filter((h) => h.kind === "episode");
   const popular = !q ? await getPopularPodcasts(8) : [];
-  const guestIntent = isGuestIntent(people, q);
+  const guestIntent = isGuestIntent(people, q, podcasts);
 
   const podcastsSection =
     podcasts.length > 0 ? (
