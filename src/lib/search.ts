@@ -73,3 +73,13 @@ export async function searchCatalog(q: string): Promise<SearchHit[]> {
   }
   return hits;
 }
+
+
+export async function getPopularPodcasts(limit = 8) {
+  const { data } = await supabase
+    .from("podcasts")
+    .select("id, slug, title, cover_image_url, rating_average")
+    .order("rating_average", { ascending: false, nullsFirst: false })
+    .limit(limit);
+  return data ?? [];
+}

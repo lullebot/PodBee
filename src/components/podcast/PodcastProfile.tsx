@@ -111,7 +111,12 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
 
         {cast.length > 0 ? (
           <section className="mt-16">
-            <h2 className="text-2xl font-semibold tracking-tight">Top cast</h2>
+            <div className="flex items-baseline justify-between gap-4">
+              <h2 className="text-2xl font-semibold tracking-tight">Top cast</h2>
+              <span className="text-[13px] text-white/45">
+                {cast.length} credited
+              </span>
+            </div>
             <Card className="mt-6 px-6 sm:px-8 py-2">
               <ul>
                 {cast.map((c) => (

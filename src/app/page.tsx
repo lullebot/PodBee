@@ -32,7 +32,7 @@ export default async function HomePage() {
               What to listen next
             </h1>
             <p className="mt-4 max-w-lg text-lg text-white/55 leading-snug">
-              Ranked podcasts by category — like IMDb for audio. Tap any poster.
+              Browse ranked shows like IMDb — then open a title for cast, episodes, and more like this.
             </p>
           </div>
           <nav className="flex flex-wrap gap-2">
@@ -95,7 +95,7 @@ export default async function HomePage() {
         ))}
 
         <p className="mt-16 text-[13px] text-white/35">
-          Tip: open a poster for ratings, genres, cast, and More like this.
+          Catalog grows under free-tier limits. Open a poster for the full title page.
         </p>
       </div>
     </main>
