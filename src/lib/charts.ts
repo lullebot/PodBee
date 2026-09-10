@@ -1,32 +1,56 @@
 import { cache } from "react";
 import { supabase } from "@/lib/supabase";
-import type { Chart, ChartBoard, ChartEntry, ChartKind } from "@/lib/types";
+import type {
+  Chart,
+  ChartBoard,
+  ChartKind,
+  ChartPodcastSummary,
+  ChartRankingRow,
+} from "@/lib/types";
 
-/** Matches live chart_rankings view (schema v0.2 / migration 003). */
-export interface ChartRankingRow {
-  chart_slug: string;
-  chart_title: string;
-  chart_type: ChartKind | string;
-  genre_slug: string | null;
-  genre_name: string | null;
-  rank: number;
-  score: number | null;
-  snapshot_at: string | null;
-  podcast_id: string;
-  podcast_slug: string;
-  podcast_title: string;
-  cover_image_url: string | null;
-  rating_average: number | null;
-  rating_count: number | null;
-  status: "active" | "completed" | "hiatus" | "cancelled";
-  primary_company_name?: string | null;
-  primary_company_slug?: string | null;
-  episode_count?: number | null;
-  podbee_score?: number | null;
-  trend_score?: number | null;
-  freshness_score?: number | null;
-  volume_score?: number | null;
-  score_updated_at?: string | null;
+export type { ChartRankingRow };
+
+const CHART_RANKINGS_SELECT = [
+  "chart_slug",
+  "chart_title",
+  "chart_type",
+  "genre_slug",
+  "genre_name",
+  "rank",
+  "score",
+  "snapshot_at",
+  "podcast_id",
+  "podcast_slug",
+  "podcast_title",
+  "cover_image_url",
+  "rating_average",
+  "rating_count",
+  "status",
+  "primary_company_name",
+  "primary_company_slug",
+  "episode_count",
+  "podbee_score",
+  "trend_score",
+  "freshness_score",
+  "volume_score",
+  "score_updated_at",
+].join(", ");
+
+function emptyScores(): Pick<
+  ChartPodcastSummary,
+  | "podbee_score"
+  | "trend_score"
+  | "freshness_score"
+  | "volume_score"
+  | "score_updated_at"
+> {
+  return {
+    podbee_score: null,
+    trend_score: null,
+    freshness_score: null,
+    volume_score: null,
+    score_updated_at: null,
+  };
 }
 
 function demoBoards(): ChartBoard[] {
@@ -63,6 +87,13 @@ function demoBoards(): ChartBoard[] {
         cover_image_url: covers[i % covers.length],
         status: "active" as const,
         primary_company_name: "Sample network",
+        primary_company_slug: "sample-network",
+        rating_average: i === 0 ? 8.4 : null,
+        rating_count: i === 0 ? 128 : null,
+        episode_count: 40 + i * 12,
+        ...emptyScores(),
+        // First demo row shows both ★ and PodBee Score; the rest stay hidden.
+        podbee_score: i === 0 ? 87.3 : null,
       },
     })),
   });
@@ -132,6 +163,27 @@ export function chartMethodBlurb(slug: string, kind?: ChartKind | string): strin
   return GENERIC_METHOD;
 }
 
+function chartPodcastFromRow(row: ChartRankingRow): ChartPodcastSummary {
+  return {
+    id: row.podcast_id,
+    slug: row.podcast_slug,
+    title: row.podcast_title,
+    subtitle: null,
+    cover_image_url: row.cover_image_url,
+    status: row.status,
+    primary_company_name: row.primary_company_name,
+    primary_company_slug: row.primary_company_slug,
+    rating_average: row.rating_average,
+    rating_count: row.rating_count,
+    episode_count: row.episode_count,
+    podbee_score: row.podbee_score,
+    trend_score: row.trend_score,
+    freshness_score: row.freshness_score,
+    volume_score: row.volume_score,
+    score_updated_at: row.score_updated_at,
+  };
+}
+
 function boardsFromRankings(rows: ChartRankingRow[]): ChartBoard[] {
   const bySlug = new Map<string, ChartBoard>();
 
@@ -158,23 +210,7 @@ function boardsFromRankings(rows: ChartRankingRow[]): ChartBoard[] {
     }
     board.entries.push({
       rank: row.rank,
-      podcast: {
-        id: row.podcast_id,
-        slug: row.podcast_slug,
-        title: row.podcast_title,
-        subtitle: null,
-        cover_image_url: row.cover_image_url,
-        status: row.status,
-        primary_company_name: row.primary_company_name ?? null,
-        rating_average: row.rating_average,
-        rating_count: row.rating_count,
-        episode_count:
-          typeof row.episode_count === "number" && row.episode_count > 0
-            ? row.episode_count
-            : null,
-        podbee_score: row.podbee_score ?? null,
-        primary_company_slug: row.primary_company_slug ?? null,
-      },
+      podcast: chartPodcastFromRow(row),
     });
   }
 
@@ -191,90 +227,6 @@ function boardsFromRankings(rows: ChartRankingRow[]): ChartBoard[] {
   return ordered;
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
-
-/** Join network name + episode counts onto chart rows. Omit when the join has nothing. */
-async function enrichChartEntries(entries: ChartEntry[]): Promise<ChartEntry[]> {
-  const ids = [...new Set(entries.map((e) => e.podcast.id))];
-  if (ids.length === 0) return entries;
-
-  const companyByPodcast = new Map<string, string>();
-  const episodesByPodcast = new Map<string, number>();
-
-  for (const idChunk of chunk(ids, 80)) {
-    const { data: pods } = await supabase
-      .from("podcasts")
-      .select("id, primary_company_id")
-      .in("id", idChunk);
-
-    const companyIds = [
-      ...new Set(
-        (pods ?? [])
-          .map((p: { primary_company_id: string | null }) => p.primary_company_id)
-          .filter((id): id is string => Boolean(id))
-      ),
-    ];
-    if (companyIds.length > 0) {
-      const { data: companies } = await supabase
-        .from("companies")
-        .select("id, name")
-        .in("id", companyIds);
-      const byId = new Map(
-        (companies ?? []).map((c: { id: string; name: string }) => [c.id, c.name])
-      );
-      for (const p of pods ?? []) {
-        const row = p as { id: string; primary_company_id: string | null };
-        const n = row.primary_company_id
-          ? byId.get(row.primary_company_id)
-          : undefined;
-        if (n) companyByPodcast.set(row.id, n);
-      }
-    }
-
-    // Exact per-show counts. Nested embeds and paged .in() selects under-count
-    // when PostgREST max-rows is small (TAL showed 15 instead of the real total).
-    const countChunk = chunk(idChunk, 20);
-    for (const ids of countChunk) {
-      const results = await Promise.all(
-        ids.map(async (id) => {
-          const { count, error } = await supabase
-            .from("episodes")
-            .select("id", { count: "exact", head: true })
-            .eq("podcast_id", id);
-          return [id, error ? null : count] as const;
-        })
-      );
-      for (const [id, count] of results) {
-        if (typeof count === "number" && count > 0) {
-          episodesByPodcast.set(id, count);
-        }
-      }
-    }
-  }
-
-  return entries.map((entry) => ({
-    ...entry,
-    podcast: {
-      ...entry.podcast,
-      primary_company_name:
-        entry.podcast.primary_company_name ??
-        companyByPodcast.get(entry.podcast.id) ??
-        null,
-      episode_count: (() => {
-        if (typeof entry.podcast.episode_count === "number" && entry.podcast.episode_count > 0) {
-          return entry.podcast.episode_count;
-        }
-        const n = episodesByPodcast.get(entry.podcast.id);
-        return n && n > 0 ? n : null;
-      })(),
-    },
-  }));
-}
-
 export const getChartBoards = cache(async (): Promise<{
   boards: ChartBoard[];
   source: "live" | "demo";
@@ -282,14 +234,15 @@ export const getChartBoards = cache(async (): Promise<{
   try {
     const { data, error } = await supabase
       .from("chart_rankings")
-      .select("*")
-      .order("rank");
+      .select(CHART_RANKINGS_SELECT)
+      .order("rank")
+      .returns<ChartRankingRow[]>();
 
     if (error || !data || data.length === 0) {
       return { boards: demoBoards(), source: "demo" };
     }
 
-    const boards = boardsFromRankings(data as ChartRankingRow[]);
+    const boards = boardsFromRankings(data);
     if (boards.every((b) => b.entries.length === 0)) {
       return { boards: demoBoards(), source: "demo" };
     }
@@ -306,24 +259,15 @@ export const getChartBoardBySlug = cache(async (
   try {
     const { data, error } = await supabase
       .from("chart_rankings")
-      .select("*")
+      .select(CHART_RANKINGS_SELECT)
       .eq("chart_slug", slug)
-      .order("rank");
+      .order("rank")
+      .returns<ChartRankingRow[]>();
 
     if (!error && data && data.length > 0) {
-      const boards = boardsFromRankings(data as ChartRankingRow[]);
+      const boards = boardsFromRankings(data);
       const board = boards[0];
-      if (board) {
-        const needsJoin = board.entries.some(
-          (e) =>
-            !e.podcast.primary_company_name ||
-            e.podcast.episode_count == null
-        );
-        const entries = needsJoin
-          ? await enrichChartEntries(board.entries)
-          : board.entries;
-        return { board: { ...board, entries }, source: "live" };
-      }
+      if (board) return { board, source: "live" };
     }
   } catch {
     // fall through to demo for known slugs

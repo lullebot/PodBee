@@ -1,20 +1,26 @@
 import Link from "next/link";
-import type { ChartEntry } from "@/lib/types";
+import { PODBEE_SCORE_LABEL, type ChartEntry } from "@/lib/types";
 import { Cover } from "@/components/ui/Cover";
 import { StarRating } from "@/components/ui/StarRating";
 
+function formatPodbeeScore(score: number): string {
+  return Number.isInteger(score) ? String(score) : score.toFixed(1);
+}
+
 export function RankedPodcastRow({ entry }: { entry: ChartEntry }) {
   const { rank, podcast } = entry;
+  const network = podcast.primary_company_name?.trim() || null;
+  const episodeCount =
+    typeof podcast.episode_count === "number" && podcast.episode_count > 0
+      ? podcast.episode_count
+      : null;
   const meta = [
-    podcast.primary_company_name,
-    typeof podcast.episode_count === "number"
-      ? `${podcast.episode_count.toLocaleString()} eps`
-      : null,
+    network,
+    episodeCount != null ? `${episodeCount.toLocaleString()} eps` : null,
   ]
     .filter(Boolean)
     .join(" · ");
-  const podbee =
-    typeof podcast.podbee_score === "number" ? podcast.podbee_score : null;
+  const podbee = podcast.podbee_score;
 
   return (
     <Link
@@ -34,9 +40,9 @@ export function RankedPodcastRow({ entry }: { entry: ChartEntry }) {
         ) : null}
         {podbee != null ? (
           <p className="mt-1 text-[12px] text-white/45 truncate">
-            PodBee Score (popularity + activity){" "}
+            {PODBEE_SCORE_LABEL}{" "}
             <span className="tabular-nums text-white/70">
-              {Number.isInteger(podbee) ? podbee : podbee.toFixed(1)}
+              {formatPodbeeScore(podbee)}
             </span>
           </p>
         ) : null}
