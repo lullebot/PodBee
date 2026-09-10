@@ -10,23 +10,31 @@ export function Cover({
 }: {
   src: string | null | undefined;
   alt: string;
-  size?: "sm" | "md" | "lg" | "xl" | "fill";
+  size?: "xs" | "sm" | "md" | "lg" | "xl" | "fill";
   rounded?: "card" | "full";
   monogram?: boolean;
 }) {
   const dim =
-    size === "sm"
-      ? "h-16 w-16"
-      : size === "md"
-        ? "h-24 w-24"
-        : size === "xl"
-          ? "h-56 w-56"
-          : size === "fill"
-            ? "aspect-square w-full"
-            : "h-40 w-40";
+    size === "xs"
+      ? "h-8 w-8"
+      : size === "sm"
+        ? "h-16 w-16"
+        : size === "md"
+          ? "h-24 w-24"
+          : size === "xl"
+            ? "h-56 w-56"
+            : size === "fill"
+              ? "aspect-square w-full"
+              : "h-40 w-40";
   const radius = rounded === "full" ? "rounded-full" : "rounded-[24px]";
   const letter =
-    size === "xl" ? "text-4xl" : size === "sm" ? "text-[13px]" : "text-xl";
+    size === "xl"
+      ? "text-4xl"
+      : size === "sm"
+        ? "text-[13px]"
+        : size === "xs"
+          ? "text-[10px]"
+          : "text-xl";
 
   if (!src) {
     return (

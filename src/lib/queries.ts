@@ -5,6 +5,7 @@ import type {
   CreditOnWork,
   Episode,
   EpisodeCard,
+  EpisodeDetail,
   Genre,
   Person,
   PersonCreditRef,
@@ -253,7 +254,7 @@ export async function getPersonDetail(
           "role_id, billing_order, character_name, credit_roles(label), episodes(id, slug, title, cover_image_url, published_at, podcast_id, podcasts(id, slug, title, cover_image_url, rating_average, rating_count, published_at))"
         )
         .eq("person_id", pe.id)
-        .order("billing_order"),
+        .limit(1000),
     ]);
 
   const credits: CreditOnWork[] = [];
@@ -294,4 +295,42 @@ export async function getPersonDetail(
   }
 
   return { person: pe, credits };
+}
+
+export async function getEpisodeDetail(
+  showSlug: string,
+  episodeSlug: string
+): Promise<EpisodeDetail | null> {
+  const { data: podcast, error: podErr } = await supabase
+    .from("podcasts")
+    .select(
+      "id, slug, title, subtitle, cover_image_url, explicit, language, status"
+    )
+    .eq("slug", showSlug)
+    .maybeSingle();
+  if (podErr || !podcast) return null;
+
+  const { data: episode, error: epErr } = await supabase
+    .from("episodes")
+    .select("*")
+    .eq("podcast_id", podcast.id)
+    .eq("slug", episodeSlug)
+    .maybeSingle();
+  if (epErr || !episode) return null;
+
+  const ep = episode as Episode;
+
+  const [{ data: season }, credits] = await Promise.all([
+    ep.season_id
+      ? supabase.from("seasons").select("*").eq("id", ep.season_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    loadCredits("episode_credits", "episode_id", ep.id),
+  ]);
+
+  return {
+    episode: ep,
+    podcast,
+    season: (season as Season | null) ?? null,
+    credits,
+  };
 }
