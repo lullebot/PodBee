@@ -154,11 +154,20 @@ export interface CreditOnWork {
   billing_order: number;
   character_name: string | null;
   work:
-    | { kind: "podcast"; podcast: Pick<Podcast, "id" | "slug" | "title" | "cover_image_url"> & { rating_average?: number | null; rating_count?: number | null } }
+    | {
+        kind: "podcast";
+        podcast: Pick<
+          Podcast,
+          "id" | "slug" | "title" | "cover_image_url" | "published_at"
+        > & { rating_average?: number | null; rating_count?: number | null };
+      }
     | {
         kind: "episode";
         episode: Pick<Episode, "id" | "slug" | "title" | "cover_image_url" | "published_at">;
-        podcast: Pick<Podcast, "id" | "slug" | "title" | "cover_image_url"> & { rating_average?: number | null; rating_count?: number | null };
+        podcast: Pick<
+          Podcast,
+          "id" | "slug" | "title" | "cover_image_url" | "published_at"
+        > & { rating_average?: number | null; rating_count?: number | null };
       };
 }
 
@@ -205,6 +214,8 @@ export interface PodcastDetail {
   seasons: Season[];
   episode_cards: EpisodeCard[];
   episode_total: number;
+  first_published_at: ISODateTime | null;
+  latest_published_at: ISODateTime | null;
   credits: PersonCreditRef[];
   similar: SimilarPodcast[];
 }
@@ -262,6 +273,7 @@ export interface ChartEntry {
     primary_company_name?: string | null;
     rating_average?: number | null;
     rating_count?: number | null;
+    episode_count?: number | null;
   };
 }
 

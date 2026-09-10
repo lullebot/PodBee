@@ -1,5 +1,6 @@
+import { cache } from "react";
 import { supabase } from "@/lib/supabase";
-import type { Chart, ChartBoard, ChartKind } from "@/lib/types";
+import type { Chart, ChartBoard, ChartEntry, ChartKind } from "@/lib/types";
 
 /** Matches live chart_rankings view (schema v0.2 / migration 003). */
 export interface ChartRankingRow {
@@ -90,12 +91,38 @@ function demoBoards(): ChartBoard[] {
   ];
 }
 
-const CHART_ORDER = [
+export const CHART_SLUGS = [
   "top-overall",
   "top-comedy",
   "top-true-crime",
   "top-news",
 ] as const;
+
+export type ChartSlug = (typeof CHART_SLUGS)[number];
+
+const METHOD_BLURB: Record<ChartSlug, string> = {
+  "top-overall":
+    "Ranked by rating when scores exist; otherwise recency, episode depth, and cover art.",
+  "top-comedy":
+    "Comedy-tagged shows, ranked by rating when scores exist; otherwise recency, episode depth, and cover art.",
+  "top-true-crime":
+    "True crime–tagged shows, ranked by rating when scores exist; otherwise recency, episode depth, and cover art.",
+  "top-news":
+    "News-tagged shows, ranked by rating when scores exist; otherwise recency, episode depth, and cover art.",
+};
+
+const GENERIC_METHOD =
+  "Ranked by rating when scores exist; otherwise recency, episode depth, and cover art.";
+
+export function chartMethodBlurb(slug: string, kind?: ChartKind | string): string {
+  if ((CHART_SLUGS as readonly string[]).includes(slug)) {
+    return METHOD_BLURB[slug as ChartSlug];
+  }
+  if (kind === "genre") {
+    return `Genre-tagged shows. ${GENERIC_METHOD}`;
+  }
+  return GENERIC_METHOD;
+}
 
 function boardsFromRankings(rows: ChartRankingRow[]): ChartBoard[] {
   const bySlug = new Map<string, ChartBoard>();
@@ -138,22 +165,138 @@ function boardsFromRankings(rows: ChartRankingRow[]): ChartBoard[] {
   }
 
   const ordered: ChartBoard[] = [];
-  for (const slug of CHART_ORDER) {
+  for (const slug of CHART_SLUGS) {
     const b = bySlug.get(slug);
     if (b) ordered.push(b);
   }
   for (const [slug, b] of bySlug) {
-    if (!CHART_ORDER.includes(slug as (typeof CHART_ORDER)[number])) {
+    if (!(CHART_SLUGS as readonly string[]).includes(slug)) {
       ordered.push(b);
     }
   }
   return ordered;
 }
 
-export async function getChartBoards(): Promise<{
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+function companyNameFromEmbed(value: unknown): string | null {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    const first = value[0] as { name?: string } | undefined;
+    return first?.name ?? null;
+  }
+  if (typeof value === "object" && "name" in value) {
+    const name = (value as { name?: string }).name;
+    return name ?? null;
+  }
+  return null;
+}
+
+function episodeCountFromEmbed(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === "number") return value;
+  if (Array.isArray(value)) {
+    const first = value[0] as { count?: number } | undefined;
+    return typeof first?.count === "number" ? first.count : null;
+  }
+  if (typeof value === "object" && "count" in value) {
+    const n = (value as { count?: number }).count;
+    return typeof n === "number" ? n : null;
+  }
+  return null;
+}
+
+/** Join network name + episode counts onto chart rows. Omit when the join has nothing. */
+async function enrichChartEntries(entries: ChartEntry[]): Promise<ChartEntry[]> {
+  const ids = [...new Set(entries.map((e) => e.podcast.id))];
+  if (ids.length === 0) return entries;
+
+  const companyByPodcast = new Map<string, string>();
+  const episodesByPodcast = new Map<string, number>();
+
+  for (const idChunk of chunk(ids, 80)) {
+    const counted = await supabase
+      .from("podcasts")
+      .select("id, primary_company_id, companies(name), episodes(count)")
+      .in("id", idChunk);
+
+    if (!counted.error && counted.data) {
+      for (const row of counted.data as Array<{
+        id: string;
+        primary_company_id: string | null;
+        companies: unknown;
+        episodes: unknown;
+      }>) {
+        const name = companyNameFromEmbed(row.companies);
+        if (name) companyByPodcast.set(row.id, name);
+        const n = episodeCountFromEmbed(row.episodes);
+        if (typeof n === "number") episodesByPodcast.set(row.id, n);
+      }
+      continue;
+    }
+
+    const { data: pods } = await supabase
+      .from("podcasts")
+      .select("id, primary_company_id")
+      .in("id", idChunk);
+
+    const companyIds = [
+      ...new Set(
+        (pods ?? [])
+          .map((p: { primary_company_id: string | null }) => p.primary_company_id)
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+    if (companyIds.length > 0) {
+      const { data: companies } = await supabase
+        .from("companies")
+        .select("id, name")
+        .in("id", companyIds);
+      const byId = new Map(
+        (companies ?? []).map((c: { id: string; name: string }) => [c.id, c.name])
+      );
+      for (const p of pods ?? []) {
+        const row = p as { id: string; primary_company_id: string | null };
+        const n = row.primary_company_id
+          ? byId.get(row.primary_company_id)
+          : undefined;
+        if (n) companyByPodcast.set(row.id, n);
+      }
+    }
+
+    const countedOnly = await supabase
+      .from("podcasts")
+      .select("id, episodes(count)")
+      .in("id", idChunk);
+    if (!countedOnly.error && countedOnly.data) {
+      for (const row of countedOnly.data as Array<{ id: string; episodes: unknown }>) {
+        const n = episodeCountFromEmbed(row.episodes);
+        if (typeof n === "number") episodesByPodcast.set(row.id, n);
+      }
+    }
+  }
+
+  return entries.map((entry) => ({
+    ...entry,
+    podcast: {
+      ...entry.podcast,
+      primary_company_name:
+        entry.podcast.primary_company_name ??
+        companyByPodcast.get(entry.podcast.id) ??
+        null,
+      episode_count: episodesByPodcast.get(entry.podcast.id) ?? null,
+    },
+  }));
+}
+
+export const getChartBoards = cache(async (): Promise<{
   boards: ChartBoard[];
   source: "live" | "demo";
-}> {
+}> => {
   try {
     const { data, error } = await supabase
       .from("chart_rankings")
@@ -173,4 +316,30 @@ export async function getChartBoards(): Promise<{
   } catch {
     return { boards: demoBoards(), source: "demo" };
   }
-}
+});
+
+export const getChartBoardBySlug = cache(async (
+  slug: string
+): Promise<{ board: ChartBoard; source: "live" | "demo" } | null> => {
+  try {
+    const { data, error } = await supabase
+      .from("chart_rankings")
+      .select("*")
+      .eq("chart_slug", slug)
+      .order("rank");
+
+    if (!error && data && data.length > 0) {
+      const boards = boardsFromRankings(data as ChartRankingRow[]);
+      const board = boards[0];
+      if (board) {
+        const entries = await enrichChartEntries(board.entries);
+        return { board: { ...board, entries }, source: "live" };
+      }
+    }
+  } catch {
+    // fall through to demo for known slugs
+  }
+
+  const demo = demoBoards().find((b) => b.chart.slug === slug);
+  return demo ? { board: demo, source: "demo" } : null;
+});

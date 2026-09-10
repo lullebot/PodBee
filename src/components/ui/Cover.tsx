@@ -1,12 +1,18 @@
-/** Square cover with soft 24px radius; falls back to monochrome placeholder. */
+import { initials } from "@/lib/format";
+
+/** Square cover with soft 24px radius; avatar variant uses a circle + monogram. */
 export function Cover({
   src,
   alt,
   size = "lg",
+  rounded = "card",
+  monogram = false,
 }: {
   src: string | null | undefined;
   alt: string;
   size?: "sm" | "md" | "lg" | "xl" | "fill";
+  rounded?: "card" | "full";
+  monogram?: boolean;
 }) {
   const dim =
     size === "sm"
@@ -18,13 +24,22 @@ export function Cover({
           : size === "fill"
             ? "aspect-square w-full"
             : "h-40 w-40";
+  const radius = rounded === "full" ? "rounded-full" : "rounded-[24px]";
+  const letter =
+    size === "xl" ? "text-4xl" : size === "sm" ? "text-[13px]" : "text-xl";
 
   if (!src) {
     return (
       <div
-        className={`${dim} shrink-0 rounded-[24px] bg-white/10`}
+        className={`${dim} ${radius} shrink-0 bg-white/10 flex items-center justify-center`}
         aria-label={alt}
-      />
+      >
+        {monogram ? (
+          <span className={`${letter} font-semibold text-white/55 tracking-tight`}>
+            {initials(alt)}
+          </span>
+        ) : null}
+      </div>
     );
   }
 
@@ -33,7 +48,7 @@ export function Cover({
     <img
       src={src}
       alt={alt}
-      className={`${dim} shrink-0 rounded-[24px] object-cover bg-white/10`}
+      className={`${dim} ${radius} shrink-0 object-cover bg-white/10`}
     />
   );
 }

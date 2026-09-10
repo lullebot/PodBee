@@ -120,6 +120,7 @@ export async function getPodcastDetail(
     { data: episodes, count: episodeCount },
     { data: genreRows },
     { data: chartRows },
+    { data: oldestEpisode },
   ] = await Promise.all([
     p.primary_company_id
       ? supabase
@@ -151,6 +152,14 @@ export async function getPodcastDetail(
       .select("chart_slug, chart_title, rank")
       .eq("podcast_slug", p.slug)
       .order("rank"),
+    supabase
+      .from("episodes")
+      .select("published_at")
+      .eq("podcast_id", p.id)
+      .not("published_at", "is", null)
+      .order("published_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const seasonList = (seasons as Season[]) ?? [];
@@ -207,6 +216,11 @@ export async function getPodcastDetail(
     seasons: seasonList,
     episode_cards,
     episode_total: episodeCount ?? episode_cards.length,
+    first_published_at:
+      (oldestEpisode as { published_at?: string | null } | null)?.published_at ??
+      p.published_at ??
+      null,
+    latest_published_at: episode_cards[0]?.published_at ?? p.published_at ?? null,
     credits,
     similar,
   };
@@ -229,14 +243,14 @@ export async function getPersonDetail(
       supabase
         .from("podcast_credits")
         .select(
-          "role_id, billing_order, character_name, credit_roles(label), podcasts(id, slug, title, cover_image_url, rating_average, rating_count)"
+          "role_id, billing_order, character_name, credit_roles(label), podcasts(id, slug, title, cover_image_url, rating_average, rating_count, published_at)"
         )
         .eq("person_id", pe.id)
         .order("billing_order"),
       supabase
         .from("episode_credits")
         .select(
-          "role_id, billing_order, character_name, credit_roles(label), episodes(id, slug, title, cover_image_url, published_at, podcast_id, podcasts(id, slug, title, cover_image_url))"
+          "role_id, billing_order, character_name, credit_roles(label), episodes(id, slug, title, cover_image_url, published_at, podcast_id, podcasts(id, slug, title, cover_image_url, rating_average, rating_count, published_at))"
         )
         .eq("person_id", pe.id)
         .order("billing_order"),

@@ -1,5 +1,6 @@
 import type { ChartBoard } from "@/lib/types";
 import { PosterCard } from "@/components/charts/PosterCard";
+import Link from "next/link";
 
 const THIN = 20;
 
@@ -24,6 +25,14 @@ export function ChartSection({ board }: { board: ChartBoard }) {
               : ""}
           </p>
         </div>
+        {n > 0 ? (
+          <Link
+            href={`/charts/${board.chart.slug}`}
+            className="shrink-0 text-[14px] font-medium text-[#007AFF] hover:opacity-80"
+          >
+            See all
+          </Link>
+        ) : null}
       </div>
 
       {n === 0 ? (
