@@ -1,6 +1,6 @@
 # PodBee
 
-The IMDb for podcasts — Apple-inspired catalog UI. **Not a media player.**
+The IMDb for podcasts — **Not a media player.**
 
 ## Stack
 
