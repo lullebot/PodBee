@@ -1,18 +1,13 @@
-export const dynamic = "force-dynamic";
-
-import Link from "next/link";
+import { PersonSearchRow } from "@/components/search/PersonSearchRow";
+import { PodcastSearchRow } from "@/components/search/PodcastSearchRow";
+import { EpisodeResults } from "@/components/search/EpisodeResults";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SearchField } from "@/components/layout/SearchField";
 import { AdSlot } from "@/components/ads/AdSlot";
-import { Cover } from "@/components/ui/Cover";
-import { StarRating } from "@/components/ui/StarRating";
-import {
-  episodeHref,
-  episodeSearchSubtitle,
-  isGuestIntent,
-  personSearchSubtitle,
-} from "@/lib/search-hits";
-import { getPopularPodcasts, searchCatalog } from "@/lib/search";
+import { isGuestIntent } from "@/lib/search-hits";
+import { getPopularMix, searchCatalog } from "@/lib/search";
+
+export const dynamic = "force-dynamic";
 
 export default async function SearchPage({
   searchParams,
@@ -24,7 +19,7 @@ export default async function SearchPage({
   const podcasts = hits.filter((h) => h.kind === "podcast");
   const people = hits.filter((h) => h.kind === "person");
   const episodes = hits.filter((h) => h.kind === "episode");
-  const popular = !q ? await getPopularPodcasts(8) : [];
+  const popular = !q ? await getPopularMix() : { podcasts: [], people: [] };
   const guestIntent = isGuestIntent(people, q, podcasts);
 
   const podcastsSection =
@@ -35,20 +30,7 @@ export default async function SearchPage({
           {podcasts.map((p) =>
             p.kind === "podcast" ? (
               <li key={p.id}>
-                <Link
-                  href={`/podcasts/${p.slug}`}
-                  className="flex items-center gap-4 py-4 group"
-                >
-                  <Cover src={p.cover_image_url} alt={p.title} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold group-hover:text-[#007AFF] transition-colors truncate">
-                      {p.title}
-                    </p>
-                    <div className="mt-1">
-                      <StarRating average={p.rating_average} size="sm" />
-                    </div>
-                  </div>
-                </Link>
+                <PodcastSearchRow hit={p} />
               </li>
             ) : null
           )}
@@ -61,36 +43,13 @@ export default async function SearchPage({
       <section key="people">
         <h2 className="text-xl font-semibold tracking-tight">People</h2>
         <ul className="mt-4 divide-y divide-white/10 rounded-[24px] border border-white/10 bg-[#12253A] px-5 sm:px-6">
-          {people.map((p) => {
-            if (p.kind !== "person") return null;
-            const subtitle = personSearchSubtitle(p);
-            return (
+          {people.map((p) =>
+            p.kind === "person" ? (
               <li key={p.id}>
-                <Link
-                  href={`/people/${p.slug}`}
-                  className="flex items-center gap-4 py-4 group"
-                >
-                  <Cover
-                    src={p.image_url}
-                    alt={p.display_name}
-                    size="sm"
-                    rounded="full"
-                    monogram
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold group-hover:text-[#007AFF] transition-colors truncate">
-                      {p.display_name}
-                    </p>
-                    {subtitle ? (
-                      <p className="mt-1 text-[13px] text-white/55 truncate">
-                        {subtitle}
-                      </p>
-                    ) : null}
-                  </div>
-                </Link>
+                <PersonSearchRow hit={p} />
               </li>
-            );
-          })}
+            ) : null
+          )}
         </ul>
       </section>
     ) : podcasts.length > 0 ? (
@@ -101,39 +60,7 @@ export default async function SearchPage({
 
   const episodesSection =
     episodes.length > 0 ? (
-      <section key="episodes">
-        <h2 className="text-xl font-semibold tracking-tight">Episodes</h2>
-        <ul className="mt-4 divide-y divide-white/10 rounded-[24px] border border-white/10 bg-[#12253A] px-5 sm:px-6">
-          {episodes.map((ep) => {
-            if (ep.kind !== "episode") return null;
-            const subtitle = episodeSearchSubtitle(ep);
-            return (
-              <li key={ep.id}>
-                <Link
-                  href={episodeHref(ep)}
-                  className="flex items-center gap-4 py-4 group"
-                >
-                  <Cover
-                    src={ep.cover_image_url}
-                    alt={ep.episode_title}
-                    size="sm"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold group-hover:text-[#007AFF] transition-colors truncate">
-                      {ep.episode_title}
-                    </p>
-                    {subtitle ? (
-                      <p className="mt-1 text-[13px] text-white/55 truncate">
-                        {subtitle}
-                      </p>
-                    ) : null}
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+      <EpisodeResults key="episodes" hits={episodes} />
     ) : null;
 
   const orderedSections = guestIntent
@@ -165,33 +92,43 @@ export default async function SearchPage({
         </div>
 
         {!q ? (
-          <section className="mt-12">
-            <h2 className="text-xl font-semibold tracking-tight">
-              Popular right now
-            </h2>
-            <p className="mt-1 text-[13px] text-white/40">
-              Start typing to search the full catalog
-            </p>
-            <ul className="mt-4 divide-y divide-white/10 rounded-[24px] border border-white/10 bg-[#12253A] px-5 sm:px-6">
-              {popular.map((p) => (
-                <li key={p.id}>
-                  <Link
-                    href={`/podcasts/${p.slug}`}
-                    className="flex items-center gap-4 py-4 group"
-                  >
-                    <Cover src={p.cover_image_url} alt={p.title} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold group-hover:text-[#007AFF] transition-colors truncate">
-                        {p.title}
-                      </p>
-                      <div className="mt-1">
-                        <StarRating average={p.rating_average} size="sm" />
-                      </div>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+          <section className="mt-12 space-y-12">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">
+                Popular right now
+              </h2>
+              <p className="mt-1 text-[13px] text-white/40">
+                Start typing to search the full catalog
+              </p>
+            </div>
+            {popular.podcasts.length > 0 ? (
+              <div>
+                <h3 className="text-[13px] font-medium uppercase tracking-wide text-white/45">
+                  Podcasts
+                </h3>
+                <ul className="mt-3 divide-y divide-white/10 rounded-[24px] border border-white/10 bg-[#12253A] px-5 sm:px-6">
+                  {popular.podcasts.map((p) => (
+                    <li key={p.id}>
+                      <PodcastSearchRow hit={p} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {popular.people.length > 0 ? (
+              <div>
+                <h3 className="text-[13px] font-medium uppercase tracking-wide text-white/45">
+                  People
+                </h3>
+                <ul className="mt-3 divide-y divide-white/10 rounded-[24px] border border-white/10 bg-[#12253A] px-5 sm:px-6">
+                  {popular.people.map((p) => (
+                    <li key={p.id}>
+                      <PersonSearchRow hit={p} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </section>
         ) : hits.length === 0 ? (
           <div className="mt-12 rounded-[24px] border border-dashed border-white/20 bg-white/[0.03] px-6 py-12 text-center">
@@ -202,7 +139,7 @@ export default async function SearchPage({
               Try a shorter name, or browse the charts while the catalog grows.
             </p>
             <a
-              href="/#top-overall"
+              href="/charts/top-overall"
               className="inline-block mt-6 text-[15px] font-medium text-[#007AFF] hover:opacity-80"
             >
               Browse Top Overall →
