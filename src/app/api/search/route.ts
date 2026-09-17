@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import {
-  searchEpisodeAppearances,
+  loadEpisodeSearchHits,
   searchPeople,
   searchPodcasts,
 } from "@/lib/search";
@@ -11,14 +11,17 @@ export const dynamic = "force-dynamic";
 /** Typeahead groups: People / Podcasts / Episodes (max 5 each). */
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q") ?? "";
-  const [people, podcasts, episodes] = await Promise.all([
+  const [people, podcasts, rawEpisodes] = await Promise.all([
     searchPeople(q, TYPEAHEAD_GROUP_LIMIT),
     searchPodcasts(q, TYPEAHEAD_GROUP_LIMIT),
-    searchEpisodeAppearances(q, 40),
+    loadEpisodeSearchHits(q),
   ]);
   return Response.json({
     people,
     podcasts,
-    episodes: rankEpisodes(episodes, q, people).slice(0, TYPEAHEAD_GROUP_LIMIT),
+    episodes: rankEpisodes(rawEpisodes, q, people).slice(
+      0,
+      TYPEAHEAD_GROUP_LIMIT
+    ),
   });
 }
