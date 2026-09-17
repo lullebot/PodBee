@@ -67,10 +67,27 @@ export interface Podcast {
   rss_url: string | null;
   primary_company_id: UUID | null;
   published_at: ISODate | null;
+  /** Pipeline-seeded placeholder score (RSS/iTunes ratings) — the "fake" side of the ratings switch. */
   rating_average: number | null;
   rating_count: number | null;
+  /** Real crowd-sourced average from podcast_ratings, kept via trigger — the "real" side of the switch. */
+  avg_rating: number;
+  real_rating_count: number;
   created_at: ISODateTime;
   updated_at: ISODateTime;
+}
+
+/**
+ * A `public.podcasts_display` row — every show-page display MUST read
+ * display_score/display_count from here, never rating_average/rating_count
+ * or avg_rating/real_rating_count directly. Flipping
+ * `app_settings.use_real_ratings` to true switches every show page over
+ * with no code change (see the migration comment in
+ * supabase/migrations/20260917120000_accounts_ratings_listen_list.sql).
+ */
+export interface PodcastWithDisplay extends Podcast {
+  display_score: number | null;
+  display_count: number | null;
 }
 
 export interface Genre {
@@ -106,6 +123,9 @@ export interface Episode {
   published_at: ISODateTime | null;
   audio_url: string | null;
   cover_image_url: string | null;
+  /** Real crowd-sourced average from episode_ratings, kept via trigger. Episodes have no fake data. */
+  avg_rating: number;
+  rating_count: number;
   created_at: ISODateTime;
   updated_at: ISODateTime;
 }
@@ -212,7 +232,7 @@ export interface ChartPlacement {
 }
 
 export interface PodcastDetail {
-  podcast: Podcast;
+  podcast: PodcastWithDisplay;
   primary_company: Company | null;
   companies: Array<Company & { role: PodcastCompanyRole }>;
   genres: Genre[];
@@ -331,4 +351,79 @@ export interface ChartEntry {
 export interface ChartBoard {
   chart: Chart;
   entries: ChartEntry[];
+}
+
+/** Accounts, ratings, and Listen List — Sprint: user accounts */
+
+export interface Profile {
+  id: UUID;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  created_at: ISODateTime;
+}
+
+export interface PodcastRating {
+  user_id: UUID;
+  podcast_id: UUID;
+  rating: number;
+  review_text: string | null;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+export interface EpisodeRating {
+  user_id: UUID;
+  episode_id: UUID;
+  rating: number;
+  review_text: string | null;
+  created_at: ISODateTime;
+  updated_at: ISODateTime;
+}
+
+/** A review row joined with its author's profile — RLS already limits rows to reviewed (or own). */
+export interface PodcastReview extends PodcastRating {
+  profile: Pick<Profile, "username" | "display_name"> | null;
+}
+
+export interface EpisodeReview extends EpisodeRating {
+  profile: Pick<Profile, "username" | "display_name"> | null;
+}
+
+export interface ListenListShow {
+  user_id: UUID;
+  podcast_id: UUID;
+  added_at: ISODateTime;
+}
+
+export interface ListenListEpisode {
+  user_id: UUID;
+  episode_id: UUID;
+  added_at: ISODateTime;
+}
+
+export interface RatedPodcastSummary {
+  podcast: Pick<Podcast, "id" | "slug" | "title" | "cover_image_url">;
+  rating: number;
+  review_text: string | null;
+  updated_at: ISODateTime;
+}
+
+export interface RatedEpisodeSummary {
+  episode: Pick<Episode, "id" | "slug" | "title" | "cover_image_url" | "podcast_id">;
+  podcast: Pick<Podcast, "slug" | "title">;
+  rating: number;
+  review_text: string | null;
+  updated_at: ISODateTime;
+}
+
+export interface ListenListShowSummary {
+  podcast: Pick<Podcast, "id" | "slug" | "title" | "cover_image_url">;
+  added_at: ISODateTime;
+}
+
+export interface ListenListEpisodeSummary {
+  episode: Pick<Episode, "id" | "slug" | "title" | "cover_image_url" | "podcast_id">;
+  podcast: Pick<Podcast, "slug" | "title">;
+  added_at: ISODateTime;
 }

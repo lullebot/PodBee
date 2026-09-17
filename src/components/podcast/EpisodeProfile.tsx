@@ -1,10 +1,19 @@
 import Link from "next/link";
 import type { EpisodeDetail } from "@/lib/types";
 import { Cover } from "@/components/ui/Cover";
+import { StarRating } from "@/components/ui/StarRating";
 import { TopCast } from "@/components/podcast/TopCast";
 import { formatDate, formatDuration } from "@/lib/format";
+import { getCurrentUser } from "@/lib/auth";
+import { getMyEpisodeRating, getEpisodeReviews } from "@/lib/ratings";
+import { isInListenListEpisode } from "@/lib/listen-list";
+import { upsertEpisodeRating } from "@/app/actions/ratings";
+import { toggleListenListEpisode } from "@/app/actions/listen-list";
+import { RatingWidget } from "@/components/rating/RatingWidget";
+import { ReviewsSection } from "@/components/rating/ReviewsSection";
+import { ListenListButton } from "@/components/listen-list/ListenListButton";
 
-export function EpisodeProfile({ data }: { data: EpisodeDetail }) {
+export async function EpisodeProfile({ data }: { data: EpisodeDetail }) {
   const { episode, podcast, season, credits } = data;
   const cover = episode.cover_image_url ?? podcast.cover_image_url;
   const meta = [
@@ -13,6 +22,21 @@ export function EpisodeProfile({ data }: { data: EpisodeDetail }) {
     formatDuration(episode.duration_seconds),
     formatDate(episode.published_at),
   ].filter(Boolean);
+
+  const [current, reviews] = await Promise.all([
+    getCurrentUser(),
+    getEpisodeReviews(episode.id),
+  ]);
+  const myRating = current ? await getMyEpisodeRating(current.id, episode.id) : null;
+  const inListenList = current ? await isInListenListEpisode(current.id, episode.id) : false;
+
+  const rateAction = upsertEpisodeRating.bind(null, episode.id, podcast.slug, episode.slug);
+  const listenListAction = toggleListenListEpisode.bind(
+    null,
+    episode.id,
+    podcast.slug,
+    episode.slug
+  );
 
   return (
     <main className="min-h-screen bg-[#0B1C2C] text-white">
@@ -46,6 +70,33 @@ export function EpisodeProfile({ data }: { data: EpisodeDetail }) {
                 {meta.join(" · ")}
               </p>
             ) : null}
+
+            <div className="mt-5">
+              <StarRating
+                average={episode.rating_count > 0 ? episode.avg_rating : null}
+                count={episode.rating_count}
+                size="lg"
+                empty="dash"
+              />
+            </div>
+
+            <div className="mt-6">
+              <ListenListButton
+                action={listenListAction}
+                initialInList={inListenList}
+                signedIn={current != null}
+                label="Listen List"
+              />
+            </div>
+
+            <div className="mt-6 max-w-xs">
+              <RatingWidget
+                action={rateAction}
+                initialRating={myRating?.rating ?? null}
+                initialReview={myRating?.review_text ?? null}
+                signedIn={current != null}
+              />
+            </div>
           </div>
         </header>
 
@@ -61,6 +112,8 @@ export function EpisodeProfile({ data }: { data: EpisodeDetail }) {
         {credits.length > 0 ? (
           <TopCast members={credits} showEpisodeCount={false} />
         ) : null}
+
+        <ReviewsSection id="reviews" reviews={reviews} />
       </div>
     </main>
   );
