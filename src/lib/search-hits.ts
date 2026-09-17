@@ -243,9 +243,7 @@ export function isOwnTopShowEpisode(
   return queried.some((person) => {
     const own = ownShowOf(person);
     if (!own.title && !own.slug) return false;
-    if (!isSameShow(episode, own)) return false;
-    if (!episode.person_name) return true;
-    return searchNameRank(episode.person_name, person.display_name) <= 2;
+    return isSameShow(episode, own);
   });
 }
 

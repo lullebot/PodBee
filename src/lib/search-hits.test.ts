@@ -262,6 +262,13 @@ const conanElsewhere = episode("Conan on IMO", {
 });
 assert.equal(isOwnTopShowEpisode(conafGuest, [conan], "conan"), true);
 assert.equal(isOwnTopShowEpisode(conanElsewhere, [conan], "conan"), false);
+const otherNameOnOwnShow = episode("The Bonering Conan", {
+  show_title: "Conan O’Brien Needs A Friend",
+  show_slug: "conan-obrien-needs-a-friend",
+  role_label: "Guest",
+  person_name: "The Bonering Conan",
+});
+assert.equal(isOwnTopShowEpisode(otherNameOnOwnShow, [conan], "conan"), true);
 const conanRanked = rankEpisodes([conafGuest, conanElsewhere], "conan", [
   conan,
   person("Conan O'Brien", {
