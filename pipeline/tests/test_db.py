@@ -4,7 +4,7 @@ import unittest
 from datetime import date
 
 from pipeline.db import CatalogWriter, resolve_unseasoned_episode_number
-from pipeline.extract import CREDIT_ROLE_IDS, ParsedEpisode, ParsedPodcast
+from pipeline.extract import CREDIT_ROLE_IDS, CreditHint, ParsedEpisode, ParsedPodcast
 
 
 UNIQUE_NO_SEASON = (
@@ -19,6 +19,7 @@ def _episode(
     *,
     season: int | None = None,
     title: str | None = None,
+    credits: list[CreditHint] | None = None,
 ) -> ParsedEpisode:
     return ParsedEpisode(
         title=title or slug,
@@ -34,11 +35,16 @@ def _episode(
         audio_url=None,
         cover_image_url=None,
         guid=slug,
-        credits=[],
+        credits=credits or [],
     )
 
 
-def _podcast(episodes: list[ParsedEpisode], *, slug: str = "radiolab") -> ParsedPodcast:
+def _podcast(
+    episodes: list[ParsedEpisode],
+    *,
+    slug: str = "radiolab",
+    credits: list[CreditHint] | None = None,
+) -> ParsedPodcast:
     return ParsedPodcast(
         title="Radiolab",
         slug=slug,
@@ -52,7 +58,7 @@ def _podcast(episodes: list[ParsedEpisode], *, slug: str = "radiolab") -> Parsed
         rss_url="https://example.com/radiolab.xml",
         published_at=date(2026, 1, 1),
         genres=[],
-        credits=[],
+        credits=credits or [],
         episodes=episodes,
     )
 
@@ -72,21 +78,29 @@ class MemoryCatalogWriter(CatalogWriter):
         self.chart_ids = {}
         self.rows: dict[str, list[dict]] = {}
 
-    def _conflicting_unseasoned_slug(
-        self,
-        podcast_id: str,
-        episode_number: int,
-        slug: str,
-    ) -> str | None:
+    def _existing_unseasoned_numbers(self, podcast_id: str) -> dict[int, str]:
+        out: dict[int, str] = {}
         for row in self.rows.get("episodes", []):
-            if (
-                row.get("podcast_id") == podcast_id
-                and row.get("episode_number") == episode_number
-                and row.get("season_id") is None
-                and row.get("slug") != slug
-            ):
-                return row.get("slug")
-        return None
+            if row.get("podcast_id") == podcast_id and row.get("season_id") is None:
+                number = row.get("episode_number")
+                slug = row.get("slug")
+                if number is not None and slug:
+                    out[number] = slug
+        return out
+
+    def _select_people_by_slug(self, slugs: list[str]) -> list[dict]:
+        return [row for row in self.rows.get("people", []) if row.get("slug") in slugs]
+
+    def upsert_many(self, table: str, rows: list[dict], *, on_conflict: str, chunk_size: int = 200) -> list[dict]:
+        conflict_keys = on_conflict.split(",")
+        return [
+            self.upsert_by(
+                table,
+                {key: row[key] for key in conflict_keys},
+                {key: value for key, value in row.items() if key not in conflict_keys},
+            )
+            for row in rows
+        ]
 
     def upsert_by(self, table: str, match: dict, payload: dict) -> dict:
         row = {**match, **payload}
@@ -179,6 +193,90 @@ class EpisodeNumberCollisionTests(unittest.TestCase):
         episodes = writer.rows["episodes"]
         self.assertEqual([row["episode_number"] for row in episodes], [1, 1])
         self.assertEqual(len(writer.rows["seasons"]), 2)
+
+
+class CreditWritingTests(unittest.TestCase):
+    """The batched episode/episode_credits/people path added to cut round trips."""
+
+    def test_writes_one_credit_per_episode(self) -> None:
+        writer = MemoryCatalogWriter()
+        stats = writer.upsert_podcast(
+            _podcast(
+                [
+                    _episode(
+                        "ep-1", 1,
+                        credits=[CreditHint("Theo Von", "guest", "title")],
+                    ),
+                    _episode(
+                        "ep-2", 2,
+                        credits=[CreditHint("Joe Rogan", "host", "author")],
+                    ),
+                ]
+            )
+        )
+        self.assertEqual(stats["episode_credits"], 2)
+        people = {row["slug"]: row for row in writer.rows["people"]}
+        self.assertEqual(set(people), {"theo-von", "joe-rogan"})
+        credits = writer.rows["episode_credits"]
+        self.assertEqual(len(credits), 2)
+        by_role = {row["role_id"]: row for row in credits}
+        self.assertEqual(by_role["guest"]["person_id"], people["theo-von"]["id"])
+        self.assertEqual(by_role["host"]["person_id"], people["joe-rogan"]["id"])
+
+    def test_same_guest_across_episodes_reuses_one_person_row(self) -> None:
+        writer = MemoryCatalogWriter()
+        writer.upsert_podcast(
+            _podcast(
+                [
+                    _episode(
+                        "ep-1", 1,
+                        credits=[CreditHint("Theo Von", "guest", "title")],
+                    ),
+                    _episode(
+                        "ep-2", 2,
+                        credits=[CreditHint("Theo Von", "guest", "title")],
+                    ),
+                ]
+            )
+        )
+        self.assertEqual(len(writer.rows["people"]), 1)
+        self.assertEqual(len(writer.rows["episode_credits"]), 2)
+
+    def test_reupsert_does_not_duplicate_credits(self) -> None:
+        writer = MemoryCatalogWriter()
+        podcast = _podcast(
+            [_episode("ep-1", 1, credits=[CreditHint("Theo Von", "guest", "title")])]
+        )
+        writer.upsert_podcast(podcast)
+        writer.upsert_podcast(podcast)
+        self.assertEqual(len(writer.rows["people"]), 1)
+        self.assertEqual(len(writer.rows["episode_credits"]), 1)
+
+    def test_unknown_role_is_skipped(self) -> None:
+        writer = MemoryCatalogWriter()
+        stats = writer.upsert_podcast(
+            _podcast(
+                [
+                    _episode(
+                        "ep-1", 1,
+                        credits=[CreditHint("Mystery Role", "narrator", "guess")],
+                    )
+                ]
+            )
+        )
+        self.assertEqual(stats["episode_credits"], 0)
+        self.assertNotIn("people", writer.rows)
+
+    def test_show_level_credits_batch_too(self) -> None:
+        writer = MemoryCatalogWriter()
+        stats = writer.upsert_podcast(
+            _podcast(
+                [_episode("ep-1", 1)],
+                credits=[CreditHint("Radiolab Team", "producer", "author")],
+            )
+        )
+        self.assertEqual(stats["show_credits"], 1)
+        self.assertEqual(len(writer.rows["podcast_credits"]), 1)
 
 
 if __name__ == "__main__":

@@ -164,6 +164,58 @@ class CatalogWriter:
             raise RuntimeError(f"insert into {table} returned no row")
         return inserted.data[0]
 
+    def upsert_many(
+        self, table: str, rows: list[dict[str, Any]], *, on_conflict: str, chunk_size: int = 200
+    ) -> list[dict[str, Any]]:
+        """Bulk upsert via native ON CONFLICT — one round trip per chunk instead of
+        one SELECT + one write per row. Use for high-volume tables (episodes,
+        episode_credits); upsert_by is still fine for the low-cardinality ones
+        (podcasts, seasons, genres — a handful of rows per ingest run)."""
+        if not rows:
+            return []
+        allowed_rows = [self._allowed(table, row) for row in rows]
+        if self.dry_run:
+            return [
+                {"id": f"dry-{table}-{index}", **row}
+                for index, row in enumerate(allowed_rows)
+            ]
+
+        assert self.client is not None
+        out: list[dict[str, Any]] = []
+        for start in range(0, len(allowed_rows), chunk_size):
+            chunk = allowed_rows[start : start + chunk_size]
+            result = self.client.table(table).upsert(chunk, on_conflict=on_conflict).execute()
+            out.extend(result.data or [])
+        return out
+
+    def _select_all(
+        self,
+        table: str,
+        *,
+        columns: str,
+        filters: Any = None,
+        page_size: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Read every row via offset pagination. A plain .execute() with no range
+        silently truncates past PostgREST's per-request row cap once a table
+        grows past it — this keeps catalog-wide reads (chart re-rank, conflict
+        checks) correct at any size instead of quietly wrong."""
+        if self.dry_run or self.client is None:
+            return []
+        out: list[dict[str, Any]] = []
+        start = 0
+        while True:
+            query = self.client.table(table).select(columns)
+            if filters is not None:
+                query = filters(query)
+            page = query.range(start, start + page_size - 1).execute()
+            rows = page.data or []
+            out.extend(rows)
+            if len(rows) < page_size:
+                break
+            start += page_size
+        return out
+
     def _refresh_role_ids(self) -> None:
         if self.dry_run or self.client is None:
             return
@@ -175,21 +227,51 @@ class CatalogWriter:
         except Exception as exc:  # noqa: BLE001
             log.warning("could not load credit_roles (%s); using built-in ids", exc)
 
-    def ensure_person(self, display_name: str) -> str:
-        slug = slugify(display_name)
-        if slug in self.people_ids:
-            return self.people_ids[slug]
-        row = self.upsert_by(
-            "people",
-            {"slug": slug},
-            {
-                "display_name": display_name.strip(),
-                "sort_name": sort_name(display_name),
-            },
-        )
-        person_id = row["id"]
-        self.people_ids[slug] = person_id
-        return person_id
+    def _select_people_by_slug(self, slugs: list[str]) -> list[dict[str, Any]]:
+        if self.dry_run or self.client is None or not slugs:
+            return []
+        out: list[dict[str, Any]] = []
+        for start in range(0, len(slugs), 200):
+            chunk = slugs[start : start + 200]
+            result = self.client.table("people").select("id, slug").in_("slug", chunk).execute()
+            out.extend(result.data or [])
+        return out
+
+    def ensure_people(self, display_names: list[str]) -> dict[str, str]:
+        """Bulk-resolve/create people by display name. Returns slug -> id for every
+        name given (already-cached names cost nothing further). One SELECT for
+        whatever isn't cached yet, one upsert for whatever's still new — not a
+        round trip per name."""
+        wanted: dict[str, str] = {}
+        for name in display_names:
+            slug = slugify(name)
+            if slug and slug not in wanted:
+                wanted[slug] = name.strip()
+
+        missing = [slug for slug in wanted if slug not in self.people_ids]
+        for row in self._select_people_by_slug(missing):
+            if row.get("slug") and row.get("id"):
+                self.people_ids[row["slug"]] = row["id"]
+
+        to_create = [slug for slug in wanted if slug not in self.people_ids]
+        if to_create:
+            rows = [
+                {
+                    "slug": slug,
+                    "display_name": wanted[slug],
+                    "sort_name": sort_name(wanted[slug]),
+                }
+                for slug in to_create
+            ]
+            created = self.upsert_many("people", rows, on_conflict="slug")
+            for row in created:
+                if row.get("slug") and row.get("id"):
+                    self.people_ids[row["slug"]] = row["id"]
+
+        for slug in wanted:
+            if slug not in self.people_ids:
+                self.people_ids[slug] = f"dry-people-{slug}"
+        return {slug: self.people_ids[slug] for slug in wanted}
 
     def ensure_genre(self, slug: str) -> str:
         if slug in self.genre_ids:
@@ -221,50 +303,56 @@ class CatalogWriter:
         fk_value: str,
         hints: list[CreditHint],
     ) -> int:
-        written = 0
-        for index, hint in enumerate(hints, start=1):
+        """Single-parent credit write (podcast_credits: a handful of rows per
+        podcast) — batched in one round trip, but still one call per podcast.
+        Episode credits go through the whole-podcast batch in upsert_podcast
+        instead, since that's the volume that actually matters at scale."""
+        valid = [h for h in hints if h.role_id in self.role_ids]
+        for hint in hints:
             if hint.role_id not in self.role_ids:
                 log.debug("skip unknown role %s for %s", hint.role_id, hint.display_name)
+        if not valid:
+            return 0
+        people_ids = self.ensure_people([h.display_name for h in valid])
+        rows = []
+        for index, hint in enumerate(valid, start=1):
+            person_id = people_ids.get(slugify(hint.display_name))
+            if not person_id:
                 continue
-            person_id = self.ensure_person(hint.display_name)
-            self.upsert_by(
-                table,
-                {fk_name: fk_value, "person_id": person_id, "role_id": hint.role_id},
-                {"billing_order": index, "character_name": None},
+            rows.append(
+                {
+                    fk_name: fk_value,
+                    "person_id": person_id,
+                    "role_id": hint.role_id,
+                    "billing_order": index,
+                    "character_name": None,
+                }
             )
-            written += 1
-        return written
+        written = self.upsert_many(table, rows, on_conflict=f"{fk_name},person_id,role_id")
+        return len(written) if written else len(rows)
 
-    def _conflicting_unseasoned_slug(
-        self,
-        podcast_id: str,
-        episode_number: int,
-        slug: str,
-    ) -> str | None:
-        """Slug of another episode that already owns (podcast_id, episode_number) with no season."""
-        if self.dry_run or self.client is None:
-            return None
-        result = (
-            self.client.table("episodes")
-            .select("slug")
-            .eq("podcast_id", podcast_id)
-            .eq("episode_number", episode_number)
-            .is_("season_id", "null")
-            .neq("slug", slug)
-            .limit(1)
-            .execute()
+    def _existing_unseasoned_numbers(self, podcast_id: str) -> dict[int, str]:
+        """episode_number -> slug for this podcast's existing unseasoned episodes —
+        one paginated read instead of a SELECT per incoming episode."""
+        rows = self._select_all(
+            "episodes",
+            columns="slug, episode_number",
+            filters=lambda q: q.eq("podcast_id", podcast_id).is_("season_id", "null"),
         )
-        rows = result.data or []
-        if not rows:
-            return None
-        return rows[0].get("slug")
+        out: dict[int, str] = {}
+        for row in rows:
+            number = row.get("episode_number")
+            slug = row.get("slug")
+            if number is not None and slug:
+                out[number] = slug
+        return out
 
-    def _episode_number_for_write(
+    def _resolve_episode_number(
         self,
-        podcast_id: str,
         slug: str,
         episode_number: int | None,
         season_id: str | None,
+        existing_numbers: dict[int, str],
         claimed_unseasoned_numbers: dict[int, str],
     ) -> int | None:
         conflicting = None
@@ -273,18 +361,17 @@ class CatalogWriter:
             if owner and owner != slug:
                 conflicting = owner
             else:
-                conflicting = self._conflicting_unseasoned_slug(
-                    podcast_id, episode_number, slug
-                )
+                existing_owner = existing_numbers.get(episode_number)
+                if existing_owner and existing_owner != slug:
+                    conflicting = existing_owner
         resolved = resolve_unseasoned_episode_number(
             episode_number, season_id, conflicting
         )
         if resolved is None and episode_number is not None and season_id is None:
             log.info(
-                "clearing episode_number=%s for podcast %s slug=%s "
+                "clearing episode_number=%s for slug=%s "
                 "(already used by slug=%s; episodes_podcast_number_no_season_uidx)",
                 episode_number,
-                podcast_id,
                 slug,
                 conflicting,
             )
@@ -342,27 +429,28 @@ class CatalogWriter:
             )
             season_ids[episode.season_number] = season["id"]
 
-        episode_count = 0
-        episode_credit_count = 0
-        # Numbers claimed earlier in this upsert (same podcast, season_id IS NULL).
+        # One bulk read of this podcast's existing episode numbers, instead of a
+        # SELECT per incoming episode, then resolve conflicts in memory.
+        existing_numbers = self._existing_unseasoned_numbers(podcast_id)
         claimed_unseasoned_numbers: dict[int, str] = {}
+        episode_rows: list[dict[str, Any]] = []
         for episode in podcast.episodes:
             season_id = (
                 season_ids.get(episode.season_number)
                 if episode.season_number is not None
                 else None
             )
-            episode_number = self._episode_number_for_write(
-                podcast_id,
+            episode_number = self._resolve_episode_number(
                 episode.slug,
                 episode.episode_number,
                 season_id,
+                existing_numbers,
                 claimed_unseasoned_numbers,
             )
-            row = self.upsert_by(
-                "episodes",
-                {"podcast_id": podcast_id, "slug": episode.slug},
+            episode_rows.append(
                 {
+                    "podcast_id": podcast_id,
+                    "slug": episode.slug,
                     "season_id": season_id,
                     "title": episode.title,
                     "subtitle": episode.subtitle,
@@ -374,12 +462,58 @@ class CatalogWriter:
                     "published_at": _dt_str(episode.published_at),
                     "audio_url": episode.audio_url,
                     "cover_image_url": episode.cover_image_url,
-                },
+                }
             )
-            episode_count += 1
-            episode_credit_count += self._write_credits(
-                "episode_credits", "episode_id", row["id"], episode.credits
-            )
+
+        # One (chunked) batch write for every episode in this podcast, instead of
+        # one upsert per episode.
+        written_episodes = self.upsert_many(
+            "episodes", episode_rows, on_conflict="podcast_id,slug"
+        )
+        episode_id_by_slug = {
+            row["slug"]: row["id"] for row in written_episodes if row.get("slug")
+        }
+        episode_count = len(episode_rows)
+
+        # One bulk people-resolve + one (chunked) batch write for every credit
+        # across every episode in this podcast, instead of a round trip per
+        # credit per episode — this is the pattern that actually matters once a
+        # show has hundreds or thousands of episodes.
+        credit_rows: list[dict[str, Any]] = []
+        all_names: list[str] = []
+        for episode in podcast.episodes:
+            for hint in episode.credits:
+                if hint.role_id in self.role_ids:
+                    all_names.append(hint.display_name)
+        people_ids = self.ensure_people(all_names)
+
+        for episode in podcast.episodes:
+            episode_id = episode_id_by_slug.get(episode.slug)
+            if not episode_id:
+                continue
+            for billing_order, hint in enumerate(episode.credits, start=1):
+                if hint.role_id not in self.role_ids:
+                    log.debug(
+                        "skip unknown role %s for %s", hint.role_id, hint.display_name
+                    )
+                    continue
+                person_id = people_ids.get(slugify(hint.display_name))
+                if not person_id:
+                    continue
+                credit_rows.append(
+                    {
+                        "episode_id": episode_id,
+                        "person_id": person_id,
+                        "role_id": hint.role_id,
+                        "billing_order": billing_order,
+                        "character_name": None,
+                    }
+                )
+
+        written_credits = self.upsert_many(
+            "episode_credits", credit_rows, on_conflict="episode_id,person_id,role_id"
+        )
+        episode_credit_count = len(written_credits) if written_credits else len(credit_rows)
 
         return {
             "podcast_id": podcast_id,
@@ -396,23 +530,15 @@ class CatalogWriter:
             return {spec["slug"]: 0 for spec in CHART_SPECS}
         assert self.client is not None
 
-        podcasts = self.client.table("podcasts").select(
-            "id, slug, cover_image_url, rating_average, rating_count, published_at"
-        ).execute().data or []
-        genre_rows = (
-            self.client.table("podcast_genres")
-            .select("podcast_id, genres(slug)")
-            .execute()
-            .data
-            or []
+        # Paginated reads — a plain .execute() with no range silently truncates
+        # past PostgREST's per-request row cap once these tables grow, which
+        # would make chart scores quietly wrong instead of erroring.
+        podcasts = self._select_all(
+            "podcasts",
+            columns="id, slug, cover_image_url, rating_average, rating_count, published_at",
         )
-        episode_rows = (
-            self.client.table("episodes")
-            .select("podcast_id, published_at")
-            .execute()
-            .data
-            or []
-        )
+        genre_rows = self._select_all("podcast_genres", columns="podcast_id, genres(slug)")
+        episode_rows = self._select_all("episodes", columns="podcast_id, published_at")
 
         genres_by_podcast: dict[str, list[str]] = {}
         for row in genre_rows:
