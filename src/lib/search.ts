@@ -528,7 +528,7 @@ export async function searchCatalog(q: string): Promise<SearchHit[]> {
   ];
 }
 
-async function popularFromCharts(): Promise<PodcastRow[]> {
+async function popularFromCharts(limit = POPULAR_MIX_LIMIT): Promise<PodcastRow[]> {
   const { data, error } = await supabase
     .from("chart_rankings")
     .select(
@@ -536,7 +536,7 @@ async function popularFromCharts(): Promise<PodcastRow[]> {
     )
     .eq("chart_slug", "top-overall")
     .order("rank")
-    .limit(POPULAR_MIX_LIMIT);
+    .limit(limit);
 
   if (error || !data || data.length === 0) return [];
 
@@ -629,10 +629,11 @@ export async function getPopularMix(): Promise<{
   podcasts: PodcastSearchHit[];
   people: PersonSearchHit[];
 }> {
-  const charted = await popularFromCharts();
-  const rows = charted.length >= 4 ? charted : await popularFromRatings();
-  const podcasts = (await densifyPodcasts(rows)).slice(0, POPULAR_MIX_LIMIT);
-  const people = await hostsForPodcasts(podcasts);
+  const charted = await popularFromCharts(12);
+  const fallback = charted.length >= 4 ? charted : await popularFromRatings();
+  const densified = await densifyPodcasts(fallback);
+  const podcasts = densified.slice(0, POPULAR_MIX_LIMIT);
+  const people = await hostsForPodcasts(densified.slice(0, 12));
   return { podcasts, people };
 }
 

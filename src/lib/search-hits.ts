@@ -199,6 +199,9 @@ export function rankEpisodes(
     const pa = searchNameRank(a.person_name ?? "", term);
     const pb = searchNameRank(b.person_name ?? "", term);
     if (pa !== pb) return pa - pb;
+    const ia = personHitIndex(a.person_name, people);
+    const ib = personHitIndex(b.person_name, people);
+    if (ia !== ib) return ia - ib;
     const ownA = isOwnTopShowHostEpisode(a, people, term) ? 1 : 0;
     const ownB = isOwnTopShowHostEpisode(b, people, term) ? 1 : 0;
     if (ownA !== ownB) return ownA - ownB;
@@ -211,6 +214,17 @@ export function rankEpisodes(
     const nb = Number.isNaN(db) ? 0 : db;
     return nb - na;
   });
+}
+
+function personHitIndex(
+  personName: string | null,
+  people: PersonSearchHit[]
+): number {
+  if (!personName || people.length === 0) return 99;
+  const idx = people.findIndex(
+    (p) => searchNameRank(personName, p.display_name) <= 2
+  );
+  return idx === -1 ? 99 : idx;
 }
 
 export function rankPodcasts(

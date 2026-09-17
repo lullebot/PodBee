@@ -105,16 +105,24 @@ const guestSpot = episode("Ira Glass visits", {
   person_name: "Ira Glass",
   published_at: "2026-01-02",
 });
+const otherIra = episode("Football is back", {
+  show_title: "The Lucy Ann Lance Show",
+  show_slug: "the-lucy-ann-lance-show",
+  role_label: "Guest",
+  person_name: "Ira Weintraub",
+  published_at: "2026-09-01",
+});
 assert.equal(isOwnTopShowHostEpisode(talHost, [ira], "ira"), true);
 assert.equal(isOwnTopShowHostEpisode(guestSpot, [ira], "ira"), false);
 
 const rankedEps = rankEpisodes(
-  [talHost, guestSpot],
+  [talHost, guestSpot, otherIra],
   "ira",
-  [ira]
+  [ira, person("Ira Weintraub", { episode_count: 1, top_show_title: "The Lucy Ann Lance Show" })]
 );
 assert.equal(rankedEps[0]?.show_title, "Fresh Air");
 assert.equal(rankedEps[1]?.show_title, "This American Life");
+assert.equal(rankedEps[2]?.person_name, "Ira Weintraub");
 
 assert.equal(
   podcastSearchSubtitle(
