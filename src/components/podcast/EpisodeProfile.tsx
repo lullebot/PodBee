@@ -58,7 +58,9 @@ export function EpisodeProfile({ data }: { data: EpisodeDetail }) {
           </section>
         ) : null}
 
-        {credits.length > 0 ? <TopCast credits={credits} /> : null}
+        {credits.length > 0 ? (
+          <TopCast members={credits} showEpisodeCount={false} />
+        ) : null}
       </div>
     </main>
   );

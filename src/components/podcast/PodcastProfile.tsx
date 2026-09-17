@@ -16,18 +16,19 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
     episode_cards,
     episode_total,
     genres,
-    chart_placements,
     similar,
     seasons,
     first_published_at,
     latest_published_at,
   } = data;
 
+  const network = primary_company?.name?.trim() || null;
   const years = formatYearRange(first_published_at, latest_published_at);
+  const genreChips = genres.filter((g) => g.name?.trim());
   const meta = [
-    primary_company?.name ?? null,
+    network,
     episode_total > 0
-      ? `${episode_total.toLocaleString()} episode${episode_total === 1 ? "" : "s"}`
+      ? `${episode_total.toLocaleString()} eps`
       : null,
     years,
   ].filter(Boolean);
@@ -77,35 +78,21 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
               />
             </div>
 
-            {genres.length > 0 ? (
-              <div className="mt-5 flex flex-wrap gap-2">
-                {genres.map((g) => (
-                  <span
-                    key={g.id}
-                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[13px] font-medium text-white/75"
-                  >
-                    {g.name}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
             {meta.length > 0 ? (
               <p className="mt-5 text-[15px] text-white/65 leading-snug">
                 {meta.join(" · ")}
               </p>
             ) : null}
 
-            {chart_placements.length > 0 ? (
-              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[14px]">
-                {chart_placements.map((c) => (
-                  <Link
-                    key={c.chart_slug}
-                    href={`/charts/${c.chart_slug}`}
-                    className="text-[#007AFF] font-medium hover:opacity-80"
+            {genreChips.length > 0 ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {genreChips.map((g) => (
+                  <span
+                    key={g.id}
+                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[13px] font-medium text-white/75"
                   >
-                    #{c.rank} {c.chart_title}
-                  </Link>
+                    {g.name}
+                  </span>
                 ))}
               </div>
             ) : null}
@@ -127,7 +114,7 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
           </section>
         ) : null}
 
-        {credits.length > 0 ? <TopCast credits={credits} /> : null}
+        {credits.length > 0 ? <TopCast members={credits} /> : null}
 
         <EpisodeList
           cards={episode_cards}
