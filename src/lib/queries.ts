@@ -64,14 +64,22 @@ function mapCreditRow(
 }
 
 const loadCompanyNames = cache(async (): Promise<string[]> => {
-  const { data } = await supabase.from("companies").select("name");
-  return (data ?? [])
-    .map((row: { name?: string | null }) => row.name?.trim() ?? "")
-    .filter((name) => name.length > 0);
+  const { data } = await supabase.from("companies").select("name, slug");
+  const keys: string[] = [];
+  for (const row of data ?? []) {
+    const name = (row as { name?: string | null }).name?.trim();
+    const slug = (row as { slug?: string | null }).slug?.trim();
+    if (name) keys.push(name);
+    if (slug) keys.push(slug);
+  }
+  return keys;
 });
 
 /** People-only title cast from podcast_credits + episode_credits, grouped by person. */
-async function loadTitleCast(podcastId: string): Promise<TitleCastMember[]> {
+async function loadTitleCast(
+  podcastId: string,
+  podcastTitle?: string | null
+): Promise<TitleCastMember[]> {
   const [{ data: showRows }, { data: episodeRows }, companyNames] =
     await Promise.all([
       supabase
@@ -90,6 +98,7 @@ async function loadTitleCast(podcastId: string): Promise<TitleCastMember[]> {
       loadCompanyNames(),
     ]);
 
+  const hide = podcastTitle ? [...companyNames, podcastTitle] : companyNames;
   const credits: TitleCastCredit[] = [];
   for (const row of (showRows ?? []) as CreditRow[]) {
     const mapped = mapCreditRow(row, null);
@@ -99,10 +108,13 @@ async function loadTitleCast(podcastId: string): Promise<TitleCastMember[]> {
     const mapped = mapCreditRow(row, row.episode_id ?? null);
     if (mapped) credits.push(mapped);
   }
-  return buildTitleCast(credits, companyNames);
+  return buildTitleCast(credits, hide);
 }
 
-async function loadEpisodeCast(episodeId: string): Promise<TitleCastMember[]> {
+async function loadEpisodeCast(
+  episodeId: string,
+  podcastTitle?: string | null
+): Promise<TitleCastMember[]> {
   const [{ data }, companyNames] = await Promise.all([
     supabase
       .from("episode_credits")
@@ -114,12 +126,13 @@ async function loadEpisodeCast(episodeId: string): Promise<TitleCastMember[]> {
     loadCompanyNames(),
   ]);
 
+  const hide = podcastTitle ? [...companyNames, podcastTitle] : companyNames;
   const credits: TitleCastCredit[] = [];
   for (const row of (data ?? []) as CreditRow[]) {
     const mapped = mapCreditRow(row, row.episode_id ?? episodeId);
     if (mapped) credits.push(mapped);
   }
-  return buildTitleCast(credits, companyNames);
+  return buildTitleCast(credits, hide);
 }
 
 
@@ -222,7 +235,7 @@ export async function getPodcastDetail(
       .from("podcast_genres")
       .select("is_primary, genre_id, genres(id, slug, name)")
       .eq("podcast_id", p.id),
-    loadTitleCast(p.id),
+    loadTitleCast(p.id, p.title),
   ]);
 
   const seasonList = (seasons as Season[]) ?? [];
@@ -364,7 +377,7 @@ export async function getEpisodeDetail(
     ep.season_id
       ? supabase.from("seasons").select("*").eq("id", ep.season_id).maybeSingle()
       : Promise.resolve({ data: null }),
-    loadEpisodeCast(ep.id),
+    loadEpisodeCast(ep.id, podcast.title),
   ]);
 
   return {

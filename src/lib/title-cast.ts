@@ -20,6 +20,96 @@ export type { TitleCastMember };
 
 const HOST_ROLES = new Set<CreditRoleId>(["host", "co_host"]);
 
+/** Pipeline org list + known company-as-person leaks (Higher Ground, …). */
+const ORG_EXACT = new Set([
+  "npr",
+  "bbc",
+  "wnyc",
+  "wbez",
+  "nyt",
+  "nbc",
+  "wsj",
+  "iheart",
+  "spotify",
+  "wondery",
+  "gimlet",
+  "earwolf",
+  "audiochuck",
+  "team coco",
+  "team coco & earwolf",
+  "exactly right",
+  "serial productions",
+  "serial productions & the new york times",
+  "the new york times",
+  "new york times",
+  "wnyc studios",
+  "nbc news",
+  "vox media",
+  "crooked media",
+  "iheartpodcasts",
+  "iheart podcasts",
+  "this american life",
+  "serial",
+  "the daily",
+  "npr news now",
+  "audacy",
+  "stitcher",
+  "audioboom",
+  "megaphone",
+  "acast",
+  "simplecast",
+  "wbez chicago",
+  "hidden brain media",
+  "casefile presents",
+  "freakonomics radio",
+  "the moth",
+  "pod save america",
+  "higher ground",
+  "siriusxm",
+  "sirius xm",
+  "maximum fun",
+  "cooler heads",
+  "bryan broadcasting",
+  "new york post",
+]);
+
+const ORG_FRAGMENTS = [
+  "podcast",
+  "studios",
+  "network",
+  "productions",
+  "presents",
+  "llc",
+  "inc.",
+  "incorporated",
+  "media",
+  "radio hour",
+  "news now",
+  "broadcasting",
+  "commission",
+];
+
+const ORG_LAST_WORDS = new Set([
+  "radio",
+  "media",
+  "presents",
+  "network",
+  "studios",
+  "productions",
+  "show",
+  "hour",
+  "commissions",
+  "commission",
+  "broadcasting",
+  "producer",
+  "producers",
+  "company",
+]);
+
+/** First+last (or Conan / J.R.) — pipeline looks_like_person. */
+const PERSON_NAME =
+  /^(?:[A-Z]\.|[A-Z][A-Za-z'’-]+)(?:\s+(?:[A-Z]\.|[A-Z][A-Za-z'’-]+)){0,3}$/;
+
 function roleRank(id: CreditRoleId): number {
   return ROLE_SORT[id] ?? 100;
 }
@@ -50,22 +140,82 @@ function pickPrimary(group: TitleCastCredit[]): TitleCastCredit {
   return primary;
 }
 
-/** Skip company names credited as people (podcast_credits / episode_credits only). */
+function foldName(name: string): string {
+  let n = name.trim().toLowerCase().replace(/\s+/g, " ");
+  if (n.startsWith("the ")) n = n.slice(4);
+  return n;
+}
+
+function slugKey(name: string): string {
+  return foldName(name)
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function companyKeySet(companyNames: Iterable<string>): Set<string> {
+  const keys = new Set<string>();
+  for (const company of companyNames) {
+    const folded = foldName(company);
+    if (folded) keys.add(folded);
+    const slug = slugKey(company);
+    if (slug) keys.add(slug);
+  }
+  return keys;
+}
+
+/** Skip company names credited as people (table match, either name or slug). */
 export function isCompanyName(
   name: string,
   companyNames: Iterable<string>
 ): boolean {
-  const n = name.trim().toLowerCase();
+  const n = foldName(name);
   if (!n) return true;
-  for (const company of companyNames) {
-    if (company.trim().toLowerCase() === n) return true;
+  const keys = companyKeySet(companyNames);
+  return keys.has(n) || keys.has(slugKey(name));
+}
+
+/** Pipeline looks_like_org — works even if companies rows are not loaded yet. */
+export function looksLikeOrg(name: string): boolean {
+  const n = foldName(name);
+  if (!n) return true;
+  if (ORG_EXACT.has(n)) return true;
+  if (ORG_FRAGMENTS.some((frag) => n.includes(frag))) return true;
+  const parts = n.split(" ");
+  const last = parts[parts.length - 1];
+  if (last && ORG_LAST_WORDS.has(last)) return true;
+  if (/^w[a-z]{2,3}\b/.test(n) && parts.length <= 3) return true;
+  const raw = name.trim();
+  if (!raw.includes(" ") && raw === raw.toUpperCase() && raw.length >= 2 && raw.length <= 6) {
+    return true;
   }
   return false;
 }
 
+export function looksLikePerson(name: string): boolean {
+  const cleaned = name.trim().replace(/\u2019/g, "'").replace(/^[\s.,;:!?]+|[\s.,;:!?]+$/g, "");
+  if (!cleaned || looksLikeOrg(cleaned)) return false;
+  if (/\d/.test(cleaned)) return false;
+  return PERSON_NAME.test(cleaned);
+}
+
 /**
- * One row per person. Hosts (host / co_host) first by billing_order;
- * everyone else by episode appearance count, high to low.
+ * Hide non-people either way: companies table match OR org/person heuristics.
+ * Strict — company-as-person leaks (Higher Ground) stay hidden until SQL cleanup.
+ */
+export function isNonPersonName(
+  name: string,
+  companyNames: Iterable<string> = []
+): boolean {
+  if (!name.trim()) return true;
+  if (isCompanyName(name, companyNames)) return true;
+  if (looksLikeOrg(name)) return true;
+  if (!looksLikePerson(name)) return true;
+  return false;
+}
+
+/**
+ * One row per person. Hosts first, then guests by appearance count.
  */
 export function buildTitleCast(
   credits: TitleCastCredit[],
@@ -74,7 +224,7 @@ export function buildTitleCast(
   const byPerson = new Map<string, TitleCastCredit[]>();
   for (const c of credits) {
     if (!c.person?.id) continue;
-    if (isCompanyName(c.person.display_name, companyNames)) continue;
+    if (isNonPersonName(c.person.display_name, companyNames)) continue;
     const list = byPerson.get(c.person.id);
     if (list) list.push(c);
     else byPerson.set(c.person.id, [c]);
