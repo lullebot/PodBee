@@ -148,6 +148,12 @@ export interface PersonCreditRef {
   character_name: string | null;
 }
 
+/** Title-page Top cast row: one person, hosts billed before guests. */
+export interface TitleCastMember extends PersonCreditRef {
+  episode_count: number;
+  is_host: boolean;
+}
+
 export interface CreditOnWork {
   role_id: CreditRoleId;
   role_label: string;
@@ -216,7 +222,7 @@ export interface PodcastDetail {
   episode_total: number;
   first_published_at: ISODateTime | null;
   latest_published_at: ISODateTime | null;
-  credits: PersonCreditRef[];
+  credits: TitleCastMember[];
   similar: SimilarPodcast[];
 }
 
@@ -234,7 +240,7 @@ export interface EpisodeDetail {
     | "status"
   >;
   season: Season | null;
-  credits: PersonCreditRef[];
+  credits: TitleCastMember[];
 }
 
 export interface PersonDetail {

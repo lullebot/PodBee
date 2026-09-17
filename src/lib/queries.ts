@@ -1,8 +1,13 @@
+import { cache } from "react";
 import { supabase } from "@/lib/supabase";
+import {
+  buildTitleCast,
+  type TitleCastCredit,
+} from "@/lib/title-cast";
 import type {
-  ChartPlacement,
   Company,
   CreditOnWork,
+  CreditRoleId,
   Episode,
   EpisodeCard,
   EpisodeDetail,
@@ -14,33 +19,120 @@ import type {
   PodcastDetail,
   Season,
   SimilarPodcast,
+  TitleCastMember,
 } from "@/lib/types";
 
-async function loadCredits(
-  table: "podcast_credits" | "episode_credits",
-  fk: "podcast_id" | "episode_id",
-  id: string
-): Promise<PersonCreditRef[]> {
-  const { data } = await supabase
-    .from(table)
-    .select(
-      "role_id, billing_order, character_name, people(id, slug, display_name, image_url), credit_roles(label)"
-    )
-    .eq(fk, id)
-    .order("billing_order");
+type CreditRow = {
+  role_id: CreditRoleId;
+  billing_order: number;
+  character_name: string | null;
+  episode_id?: string | null;
+  people: PersonCreditRef["person"] | PersonCreditRef["person"][] | null;
+  credit_roles: { label: string } | { label: string }[] | null;
+};
 
-  return (data ?? []).flatMap((row: any) => {
-    if (!row.people) return [];
-    return [
-      {
-        person: row.people,
-        role_id: row.role_id,
-        role_label: row.credit_roles?.label ?? row.role_id,
-        billing_order: row.billing_order,
-        character_name: row.character_name ?? null,
-      },
-    ];
-  });
+function asPerson(
+  value: CreditRow["people"]
+): PersonCreditRef["person"] | null {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+function asRoleLabel(
+  roleId: CreditRoleId,
+  value: CreditRow["credit_roles"]
+): string {
+  if (!value) return roleId;
+  const row = Array.isArray(value) ? value[0] : value;
+  return row?.label ?? roleId;
+}
+
+function mapCreditRow(
+  row: CreditRow,
+  episodeId: string | null
+): TitleCastCredit | null {
+  const person = asPerson(row.people);
+  if (!person) return null;
+  return {
+    person,
+    role_id: row.role_id,
+    role_label: asRoleLabel(row.role_id, row.credit_roles),
+    billing_order: row.billing_order,
+    character_name: row.character_name ?? null,
+    episode_id: episodeId,
+  };
+}
+
+const loadCompanyNames = cache(async (): Promise<string[]> => {
+  const { data } = await supabase.from("companies").select("name, slug");
+  const keys: string[] = [];
+  for (const row of data ?? []) {
+    const name = (row as { name?: string | null }).name?.trim();
+    const slug = (row as { slug?: string | null }).slug?.trim();
+    if (name) keys.push(name);
+    if (slug) keys.push(slug);
+  }
+  return keys;
+});
+
+/** People-only title cast from podcast_credits + episode_credits, grouped by person. */
+async function loadTitleCast(
+  podcastId: string,
+  podcastTitle?: string | null
+): Promise<TitleCastMember[]> {
+  const [{ data: showRows }, { data: episodeRows }, companyNames] =
+    await Promise.all([
+      supabase
+        .from("podcast_credits")
+        .select(
+          "role_id, billing_order, character_name, people(id, slug, display_name, image_url), credit_roles(label)"
+        )
+        .eq("podcast_id", podcastId),
+      supabase
+        .from("episode_credits")
+        .select(
+          "role_id, billing_order, character_name, episode_id, people(id, slug, display_name, image_url), credit_roles(label), episodes!inner(podcast_id)"
+        )
+        .eq("episodes.podcast_id", podcastId)
+        .limit(4000),
+      loadCompanyNames(),
+    ]);
+
+  const hide = podcastTitle ? [...companyNames, podcastTitle] : companyNames;
+  const credits: TitleCastCredit[] = [];
+  for (const row of (showRows ?? []) as CreditRow[]) {
+    const mapped = mapCreditRow(row, null);
+    if (mapped) credits.push(mapped);
+  }
+  for (const row of (episodeRows ?? []) as CreditRow[]) {
+    const mapped = mapCreditRow(row, row.episode_id ?? null);
+    if (mapped) credits.push(mapped);
+  }
+  return buildTitleCast(credits, hide);
+}
+
+async function loadEpisodeCast(
+  episodeId: string,
+  podcastTitle?: string | null
+): Promise<TitleCastMember[]> {
+  const [{ data }, companyNames] = await Promise.all([
+    supabase
+      .from("episode_credits")
+      .select(
+        "role_id, billing_order, character_name, episode_id, people(id, slug, display_name, image_url), credit_roles(label)"
+      )
+      .eq("episode_id", episodeId)
+      .order("billing_order"),
+    loadCompanyNames(),
+  ]);
+
+  const hide = podcastTitle ? [...companyNames, podcastTitle] : companyNames;
+  const credits: TitleCastCredit[] = [];
+  for (const row of (data ?? []) as CreditRow[]) {
+    const mapped = mapCreditRow(row, row.episode_id ?? episodeId);
+    if (mapped) credits.push(mapped);
+  }
+  return buildTitleCast(credits, hide);
 }
 
 
@@ -118,10 +210,9 @@ export async function getPodcastDetail(
   const [
     { data: primary_company },
     { data: seasons },
-    { data: episodes, count: episodeCount },
+    { data: cards, count: episodeCount },
     { data: genreRows },
-    { data: chartRows },
-    { data: oldestEpisode },
+    credits,
   ] = await Promise.all([
     p.primary_company_id
       ? supabase
@@ -136,92 +227,54 @@ export async function getPodcastDetail(
       .eq("podcast_id", p.id)
       .order("number"),
     supabase
-      .from("episodes")
-      .select(
-        "id, slug, title, episode_number, episode_type, duration_seconds, published_at, cover_image_url, season_id",
-        { count: "exact" }
-      )
+      .from("episode_cards")
+      .select("*", { count: "exact" })
       .eq("podcast_id", p.id)
-      .order("published_at", { ascending: false })
-      .limit(25),
+      .order("published_at", { ascending: false }),
     supabase
       .from("podcast_genres")
       .select("is_primary, genre_id, genres(id, slug, name)")
       .eq("podcast_id", p.id),
-    supabase
-      .from("chart_rankings")
-      .select("chart_slug, chart_title, rank")
-      .eq("podcast_slug", p.slug)
-      .order("rank"),
-    supabase
-      .from("episodes")
-      .select("published_at")
-      .eq("podcast_id", p.id)
-      .not("published_at", "is", null)
-      .order("published_at", { ascending: true })
-      .limit(1)
-      .maybeSingle(),
+    loadTitleCast(p.id, p.title),
   ]);
 
   const seasonList = (seasons as Season[]) ?? [];
-  const seasonById = new Map(seasonList.map((s) => [s.id, s]));
-
-  const episode_cards: EpisodeCard[] = (episodes ?? []).map((ep: any) => {
-    const season = ep.season_id ? seasonById.get(ep.season_id) : null;
-    return {
-      id: ep.id,
-      episode_slug: ep.slug,
-      episode_title: ep.title,
-      episode_number: ep.episode_number,
-      episode_type: ep.episode_type,
-      duration_seconds: ep.duration_seconds,
-      published_at: ep.published_at,
-      episode_cover_url: ep.cover_image_url,
-      podcast_id: p.id,
-      podcast_slug: p.slug,
-      podcast_title: p.title,
-      podcast_cover_url: p.cover_image_url,
-      season_number: season?.number ?? null,
-      season_title: season?.title ?? null,
-    };
-  });
+  const episode_cards = (cards ?? []) as EpisodeCard[];
 
   const genres: Genre[] = [];
   const genreIds: string[] = [];
   for (const row of genreRows ?? []) {
-    const g = (row as any).genres;
-    if (!g) continue;
-    genres.push(g as Genre);
-    genreIds.push(g.id);
+    const g = (row as { genres?: Genre | Genre[] | null }).genres;
+    const genre = Array.isArray(g) ? g[0] : g;
+    if (!genre?.id || !genre.name?.trim()) continue;
+    genres.push(genre);
+    genreIds.push(genre.id);
   }
 
-  const chart_placements: ChartPlacement[] = (chartRows ?? []).map(
-    (row: any) => ({
-      chart_slug: row.chart_slug,
-      chart_title: row.chart_title,
-      rank: row.rank,
-    })
-  );
+  const similar = await loadSimilarPodcasts(p.id, genreIds);
 
-  const [credits, similar] = await Promise.all([
-    loadCredits("podcast_credits", "podcast_id", p.id),
-    loadSimilarPodcasts(p.id, genreIds),
-  ]);
+  let first_published_at: string | null = p.published_at ?? null;
+  let latest_published_at: string | null = p.published_at ?? null;
+  for (const card of episode_cards) {
+    const at = card.published_at;
+    if (!at) continue;
+    if (!first_published_at || at < first_published_at) first_published_at = at;
+    if (!latest_published_at || at > latest_published_at) {
+      latest_published_at = at;
+    }
+  }
 
   return {
     podcast: p,
     primary_company: (primary_company as Company | null) ?? null,
     companies: [],
     genres,
-    chart_placements,
+    chart_placements: [],
     seasons: seasonList,
     episode_cards,
     episode_total: episodeCount ?? episode_cards.length,
-    first_published_at:
-      (oldestEpisode as { published_at?: string | null } | null)?.published_at ??
-      p.published_at ??
-      null,
-    latest_published_at: episode_cards[0]?.published_at ?? p.published_at ?? null,
+    first_published_at,
+    latest_published_at,
     credits,
     similar,
   };
@@ -324,7 +377,7 @@ export async function getEpisodeDetail(
     ep.season_id
       ? supabase.from("seasons").select("*").eq("id", ep.season_id).maybeSingle()
       : Promise.resolve({ data: null }),
-    loadCredits("episode_credits", "episode_id", ep.id),
+    loadEpisodeCast(ep.id, podcast.title),
   ]);
 
   return {

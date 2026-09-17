@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { EpisodeCard, Season } from "@/lib/types";
+import { TITLE_EPISODE_PREVIEW } from "@/lib/title-cast";
 import { Card } from "@/components/ui/Card";
 import { EpisodeCardRow } from "@/components/podcast/EpisodeCardRow";
 
@@ -15,28 +16,28 @@ export function EpisodeList({
   seasons: Season[];
 }) {
   const [season, setSeason] = useState<number | "all">("all");
+  const [expanded, setExpanded] = useState(false);
   const seasonNums = [
-    ...new Set(
-      cards
-        .map((c) => c.season_number)
-        .filter((n): n is number => n != null)
-    ),
+    ...new Set(seasons.map((s) => s.number).filter((n) => Number.isFinite(n))),
   ].sort((a, b) => a - b);
-  const showChips = seasons.length > 0 && seasonNums.length > 0;
+  const showChips = seasonNums.length > 0;
   const filtered =
     season === "all"
       ? cards
       : cards.filter((c) => c.season_number === season);
+  const catalogTotal = season === "all" ? total : filtered.length;
+  const more = !expanded && filtered.length > TITLE_EPISODE_PREVIEW;
+  const visible = more
+    ? filtered.slice(0, TITLE_EPISODE_PREVIEW)
+    : filtered;
 
   return (
     <section id="episodes" className="mt-16 scroll-mt-28">
       <div className="flex items-baseline justify-between gap-4">
         <h2 className="text-2xl font-semibold tracking-tight">Episodes</h2>
-        {total > 0 ? (
-          <span className="text-[13px] text-white/45">
-            Showing {Math.min(cards.length, total)} of {total}
-          </span>
-        ) : null}
+        <span className="text-[13px] text-white/45">
+          Showing {visible.length} of {catalogTotal}
+        </span>
       </div>
 
       {showChips ? (
@@ -44,14 +45,20 @@ export function EpisodeList({
           <SeasonChip
             label="All"
             active={season === "all"}
-            onClick={() => setSeason("all")}
+            onClick={() => {
+              setSeason("all");
+              setExpanded(false);
+            }}
           />
           {seasonNums.map((n) => (
             <SeasonChip
               key={n}
               label={`S${n}`}
               active={season === n}
-              onClick={() => setSeason(n)}
+              onClick={() => {
+                setSeason(n);
+                setExpanded(false);
+              }}
             />
           ))}
         </div>
@@ -62,11 +69,20 @@ export function EpisodeList({
           <p className="py-10 text-[15px] text-white/45">
             {cards.length === 0
               ? "No episodes in the catalog yet."
-              : "No episodes from this season in the latest 25."}
+              : "No episodes from this season in the catalog."}
           </p>
         ) : (
-          filtered.map((card) => <EpisodeCardRow key={card.id} card={card} />)
+          visible.map((card) => <EpisodeCardRow key={card.id} card={card} />)
         )}
+        {more ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="w-full py-4 text-[15px] font-medium text-[#007AFF] hover:opacity-80"
+          >
+            Show more
+          </button>
+        ) : null}
       </Card>
     </section>
   );
