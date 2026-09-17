@@ -29,6 +29,9 @@ export type PersonSearchHit = {
   image_url: string | null;
   episode_count: number;
   top_show_title: string | null;
+  /** Home-base show used to demote own-show episode dumps. */
+  own_show_title: string | null;
+  own_show_slug: string | null;
 };
 
 export type EpisodeSearchHit = {
@@ -157,23 +160,90 @@ export function isHostRole(label: string | null | undefined): boolean {
   return n === "host" || n === "co_host" || n === "cohost";
 }
 
+/** Straighten quotes so “Conan O’Brien…” matches “Conan O'Brien…”. */
+export function normalizeShowKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u201A\u201B`]/g, "'");
+}
+
+/** Volume at which a show is a home base even without a host-like role. */
+export const OWN_SHOW_EPISODE_FLOOR = 3;
+
+export type ShowTally = {
+  title: string;
+  slug: string | null;
+  episodeCount: number;
+  hasPodcastCredit: boolean;
+  hasHostLikeCredit: boolean;
+};
+
+export function pickTopShowTitle(shows: ShowTally[]): string | null {
+  let best: ShowTally | null = null;
+  for (const show of shows) {
+    if (!best || show.episodeCount > best.episodeCount) best = show;
+  }
+  if (best && best.episodeCount > 0) return best.title;
+  return shows.find((s) => s.hasPodcastCredit)?.title ?? null;
+}
+
 /**
- * Queried host’s own Top-show episodes (This American Life for Ira Glass)
- * so guest appearances on other shows can rise.
+ * Home-base show for ranking: billed podcast credit, host-like episode
+ * credit, or a clear volume majority. A single guest appearance is not
+ * an own show — that credit should stay visible.
  */
-export function isOwnTopShowHostEpisode(
+export function pickOwnShow(
+  shows: ShowTally[]
+): { title: string; slug: string | null } | null {
+  const byEps = (a: ShowTally, b: ShowTally) => b.episodeCount - a.episodeCount;
+  const billed = shows.filter((s) => s.hasPodcastCredit).slice().sort(byEps);
+  if (billed[0]) return { title: billed[0].title, slug: billed[0].slug };
+  const hosted = shows.filter((s) => s.hasHostLikeCredit).slice().sort(byEps);
+  if (hosted[0]) return { title: hosted[0].title, slug: hosted[0].slug };
+  const [best] = shows.slice().sort(byEps);
+  if (best && best.episodeCount >= OWN_SHOW_EPISODE_FLOOR) {
+    return { title: best.title, slug: best.slug };
+  }
+  return null;
+}
+
+function ownShowOf(person: PersonSearchHit): {
+  title: string | null;
+  slug: string | null;
+} {
+  return {
+    title: person.own_show_title,
+    slug: person.own_show_slug,
+  };
+}
+
+export function isSameShow(
+  episode: Pick<EpisodeSearchHit, "show_title" | "show_slug">,
+  own: { title: string | null; slug: string | null }
+): boolean {
+  if (own.slug && episode.show_slug && own.slug === episode.show_slug) {
+    return true;
+  }
+  if (!own.title || !episode.show_title) return false;
+  return normalizeShowKey(own.title) === normalizeShowKey(episode.show_title);
+}
+
+/**
+ * Queried person’s own/Top-show episodes — Host, Co-host, Guest, Producer,
+ * or any other role — so guest appearances on other shows can rise.
+ */
+export function isOwnTopShowEpisode(
   episode: EpisodeSearchHit,
   people: PersonSearchHit[],
   term: string
 ): boolean {
-  if (!isHostRole(episode.role_label)) return false;
   const queried = people.filter((p) => isPrefixNameMatch(p.display_name, term));
   if (queried.length === 0) return false;
   return queried.some((person) => {
-    if (!person.top_show_title) return false;
-    if (person.top_show_title !== episode.show_title) return false;
-    if (!episode.person_name) return true;
-    return searchNameRank(episode.person_name, person.display_name) <= 2;
+    const own = ownShowOf(person);
+    if (!own.title && !own.slug) return false;
+    return isSameShow(episode, own);
   });
 }
 
@@ -196,15 +266,17 @@ export function rankEpisodes(
   people: PersonSearchHit[] = []
 ): EpisodeSearchHit[] {
   return hits.slice().sort((a, b) => {
+    // Other-show hits (credits or title matches) above the queried
+    // person’s own/Top show, regardless of role.
+    const ownA = isOwnTopShowEpisode(a, people, term) ? 1 : 0;
+    const ownB = isOwnTopShowEpisode(b, people, term) ? 1 : 0;
+    if (ownA !== ownB) return ownA - ownB;
     const pa = searchNameRank(a.person_name ?? "", term);
     const pb = searchNameRank(b.person_name ?? "", term);
     if (pa !== pb) return pa - pb;
     const ia = personHitIndex(a.person_name, people);
     const ib = personHitIndex(b.person_name, people);
     if (ia !== ib) return ia - ib;
-    const ownA = isOwnTopShowHostEpisode(a, people, term) ? 1 : 0;
-    const ownB = isOwnTopShowHostEpisode(b, people, term) ? 1 : 0;
-    if (ownA !== ownB) return ownA - ownB;
     const ta = searchNameRank(a.episode_title, term);
     const tb = searchNameRank(b.episode_title, term);
     if (ta !== tb) return ta - tb;

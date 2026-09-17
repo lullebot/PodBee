@@ -1,6 +1,10 @@
 import { supabase } from "@/lib/supabase";
 import {
   POPULAR_MIX_LIMIT,
+  isHostRole,
+  normalizeShowKey,
+  pickOwnShow,
+  pickTopShowTitle,
   rankEpisodes,
   rankPeople,
   rankPodcasts,
@@ -8,6 +12,7 @@ import {
   type PersonSearchHit,
   type PodcastSearchHit,
   type SearchHit,
+  type ShowTally,
 } from "@/lib/search-hits";
 
 export type { PersonSearchHit, PodcastSearchHit, EpisodeSearchHit, SearchHit };
@@ -70,6 +75,76 @@ type CreditRow = {
   episodes?: NestedEpisode | NestedEpisode[] | null;
 };
 
+type ShowRef = { title: string; slug: string | null };
+
+function podcastRef(value: unknown): ShowRef | null {
+  const node = asOne(
+    value as { title?: string | null; slug?: string | null } | null
+  );
+  const title = node?.title;
+  if (typeof title !== "string" || title.length === 0) return null;
+  const slug =
+    typeof node?.slug === "string" && node.slug.length > 0 ? node.slug : null;
+  return { title, slug };
+}
+
+function tallyKey(show: ShowRef): string {
+  return show.slug ? `s:${show.slug}` : `t:${normalizeShowKey(show.title)}`;
+}
+
+function upsertShowTally(
+  byKey: Map<string, ShowTally>,
+  show: ShowRef,
+  kind: "episode" | "podcast",
+  roleId: string | null | undefined
+): void {
+  const key = tallyKey(show);
+  const prev = byKey.get(key) ?? {
+    title: show.title,
+    slug: show.slug,
+    episodeCount: 0,
+    hasPodcastCredit: false,
+    hasHostLikeCredit: false,
+  };
+  if (show.slug && !prev.slug) prev.slug = show.slug;
+  if (kind === "episode") prev.episodeCount += 1;
+  if (kind === "podcast") prev.hasPodcastCredit = true;
+  if (isHostRole(roleId)) prev.hasHostLikeCredit = true;
+  byKey.set(key, prev);
+}
+
+function tallyPersonShows(
+  episodeRows: unknown[],
+  showRows: unknown[]
+): ShowTally[] {
+  const byKey = new Map<string, ShowTally>();
+  for (const row of episodeRows) {
+    const episodes = (row as { episodes?: unknown }).episodes;
+    const podcasts = asOne(episodes as object | object[] | null) as
+      | { podcasts?: unknown }
+      | null;
+    const show = podcastRef(podcasts?.podcasts);
+    if (!show) continue;
+    upsertShowTally(
+      byKey,
+      show,
+      "episode",
+      (row as { role_id?: string | null }).role_id
+    );
+  }
+  for (const row of showRows) {
+    const show = podcastRef((row as { podcasts?: unknown }).podcasts);
+    if (!show) continue;
+    upsertShowTally(
+      byKey,
+      show,
+      "podcast",
+      (row as { role_id?: string | null }).role_id
+    );
+  }
+  return [...byKey.values()];
+}
+
 function sanitizeTerm(q: string): string {
   return q.trim().replace(/[%_,]/g, " ");
 }
@@ -83,39 +158,6 @@ function asNumber(value: unknown): number | null {
   if (value == null) return null;
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
-}
-
-function titleFrom(value: unknown): string | null {
-  const node = asOne(value as { title?: string | null } | { title?: string | null }[] | null);
-  const title = node?.title;
-  return typeof title === "string" && title.length > 0 ? title : null;
-}
-
-function topShowTitle(episodeRows: unknown[], showRows: unknown[]): string | null {
-  const counts = new Map<string, number>();
-  for (const row of episodeRows) {
-    const episodes = (row as { episodes?: unknown }).episodes;
-    const podcasts = asOne(episodes as object | object[] | null) as
-      | { podcasts?: unknown }
-      | null;
-    const title = titleFrom(podcasts?.podcasts);
-    if (!title) continue;
-    counts.set(title, (counts.get(title) ?? 0) + 1);
-  }
-  let best: string | null = null;
-  let bestN = 0;
-  for (const [title, n] of counts) {
-    if (n > bestN) {
-      best = title;
-      bestN = n;
-    }
-  }
-  if (best) return best;
-  for (const row of showRows) {
-    const title = titleFrom((row as { podcasts?: unknown }).podcasts);
-    if (title) return title;
-  }
-  return null;
 }
 
 function collectPeople(
@@ -209,12 +251,12 @@ async function hydratePeople(candidates: PersonRow[]): Promise<PersonSearchHit[]
   const [{ data: epRows }, { data: showRows }] = await Promise.all([
     supabase
       .from("episode_credits")
-      .select("person_id, episodes(podcasts(title))")
+      .select("person_id, role_id, episodes(podcasts(title, slug))")
       .in("person_id", ids)
       .limit(4000),
     supabase
       .from("podcast_credits")
-      .select("person_id, podcasts(title)")
+      .select("person_id, role_id, podcasts(title, slug)")
       .in("person_id", ids)
       .limit(800),
   ]);
@@ -239,6 +281,8 @@ async function hydratePeople(candidates: PersonRow[]): Promise<PersonSearchHit[]
     const episodes = epsByPerson.get(person.id) ?? [];
     const shows = showsByPerson.get(person.id) ?? [];
     if (episodes.length === 0 && shows.length === 0) continue;
+    const tallies = tallyPersonShows(episodes, shows);
+    const own = pickOwnShow(tallies);
     hits.push({
       kind: "person",
       id: person.id,
@@ -246,7 +290,9 @@ async function hydratePeople(candidates: PersonRow[]): Promise<PersonSearchHit[]
       display_name: person.display_name,
       image_url: person.image_url,
       episode_count: episodes.length,
-      top_show_title: topShowTitle(episodes, shows),
+      top_show_title: pickTopShowTitle(tallies),
+      own_show_title: own?.title ?? null,
+      own_show_slug: own?.slug ?? null,
     });
   }
   return hits;
@@ -351,7 +397,7 @@ async function collectEpisodeAppearances(
             "role_id, credit_roles(label), people(display_name), episodes(id, slug, title, published_at, cover_image_url, podcasts(slug, title, cover_image_url))"
           )
           .in("person_id", ids)
-          .limit(240)
+          .limit(400)
       : Promise.resolve({ data: [] as CreditRow[] }),
     wordCount >= 2
       ? supabase
@@ -376,10 +422,20 @@ async function collectEpisodeAppearances(
   return mergeEpisodeHits([...fromCredits, ...fromTitles]);
 }
 
+/** Unranked episode hits — rank with people so own-show dumps lose to guest spots. */
+export async function loadEpisodeSearchHits(
+  q: string
+): Promise<EpisodeSearchHit[]> {
+  const term = sanitizeTerm(q);
+  if (term.length < 2) return [];
+  return collectEpisodeAppearances(term);
+}
+
 /**
  * Episode rows for guest-style queries: credits on matching people,
  * plus episode title matches. Each hit deep-links to the episode page.
- * Ranked after collect so host Top-show episodes can be down-ranked.
+ * Ranked after collect so a queried person’s own/Top-show episodes
+ * (any role) can be down-ranked below guest spots on other shows.
  */
 export async function searchEpisodeAppearances(
   q: string,
@@ -598,7 +654,7 @@ async function hostsForPodcasts(
 
   const seen = new Set<string>();
   const rows: PersonRow[] = [];
-  const topShow = new Map<string, string>();
+  const billedShow = new Map<string, { title: string; slug: string }>();
   for (const row of sorted) {
     const nested = asOne(
       (row as { people?: PersonRow | PersonRow[] | null }).people
@@ -612,15 +668,20 @@ async function hostsForPodcasts(
       image_url: nested.image_url ?? null,
     });
     const show = showById.get((row as { podcast_id?: string }).podcast_id ?? "");
-    if (show) topShow.set(nested.id, show.title);
+    if (show) billedShow.set(nested.id, { title: show.title, slug: show.slug });
   }
 
   const hydrated = await hydratePeople(rows);
   return hydrated
-    .map((hit) => ({
-      ...hit,
-      top_show_title: hit.top_show_title ?? topShow.get(hit.id) ?? null,
-    }))
+    .map((hit) => {
+      const billed = billedShow.get(hit.id);
+      return {
+        ...hit,
+        top_show_title: hit.top_show_title ?? billed?.title ?? null,
+        own_show_title: hit.own_show_title ?? billed?.title ?? null,
+        own_show_slug: hit.own_show_slug ?? billed?.slug ?? null,
+      };
+    })
     .slice(0, POPULAR_MIX_LIMIT);
 }
 

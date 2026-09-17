@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import {
   isGuestIntent,
   isHostRole,
-  isOwnTopShowHostEpisode,
+  isOwnTopShowEpisode,
+  pickOwnShow,
+  pickTopShowTitle,
   podcastSearchSubtitle,
   rankEpisodes,
   rankPeople,
@@ -10,6 +12,7 @@ import {
   type EpisodeSearchHit,
   type PersonSearchHit,
   type PodcastSearchHit,
+  type ShowTally,
 } from "./search-hits";
 
 function person(
@@ -17,6 +20,7 @@ function person(
   extra: Partial<PersonSearchHit> = {}
 ): PersonSearchHit {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const top = extra.top_show_title ?? null;
   return {
     kind: "person",
     id: slug,
@@ -24,7 +28,10 @@ function person(
     display_name: name,
     image_url: null,
     episode_count: extra.episode_count ?? 0,
-    top_show_title: extra.top_show_title ?? null,
+    top_show_title: top,
+    own_show_title:
+      extra.own_show_title !== undefined ? extra.own_show_title : top,
+    own_show_slug: extra.own_show_slug !== undefined ? extra.own_show_slug : null,
   };
 }
 
@@ -65,6 +72,19 @@ function podcast(
   };
 }
 
+function tally(
+  title: string,
+  extra: Partial<ShowTally> = {}
+): ShowTally {
+  return {
+    title,
+    slug: extra.slug ?? title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    episodeCount: extra.episodeCount ?? 0,
+    hasPodcastCredit: extra.hasPodcastCredit ?? false,
+    hasHostLikeCredit: extra.hasHostLikeCredit ?? false,
+  };
+}
+
 assert.equal(searchNameRank("Ira Glass", "ira"), 1);
 assert.equal(searchNameRank("Iran", "ira"), 2);
 assert.equal(searchNameRank("Kira", "ira"), 4);
@@ -86,10 +106,54 @@ assert.deepEqual(
 assert.equal(isHostRole("Host"), true);
 assert.equal(isHostRole("co-host"), true);
 assert.equal(isHostRole("Guest"), false);
+assert.equal(isHostRole("Producer"), false);
+
+assert.equal(
+  pickTopShowTitle([
+    tally("IMO with Michelle Obama and Craig Robinson", { episodeCount: 60 }),
+    tally("Fresh Air", { episodeCount: 1 }),
+  ]),
+  "IMO with Michelle Obama and Craig Robinson"
+);
+
+assert.equal(
+  pickOwnShow([tally("Divided Argument", { episodeCount: 1 })])?.title,
+  undefined
+);
+assert.equal(
+  pickOwnShow([
+    tally("Conan O’Brien Needs A Friend", {
+      episodeCount: 41,
+      slug: "conan-obrien-needs-a-friend",
+    }),
+  ])?.slug,
+  "conan-obrien-needs-a-friend"
+);
+assert.equal(
+  pickOwnShow([
+    tally("The Joe Rogan Experience", {
+      episodeCount: 0,
+      hasPodcastCredit: true,
+      slug: "the-joe-rogan-experience",
+    }),
+  ])?.slug,
+  "the-joe-rogan-experience"
+);
+assert.equal(
+  pickOwnShow([
+    tally("This American Life", {
+      episodeCount: 15,
+      hasHostLikeCredit: true,
+      slug: "this-american-life",
+    }),
+  ])?.title,
+  "This American Life"
+);
 
 const ira = person("Ira Glass", {
   episode_count: 15,
   top_show_title: "This American Life",
+  own_show_slug: "this-american-life",
 });
 const talHost = episode("449: Middle School", {
   show_title: "This American Life",
@@ -112,8 +176,8 @@ const otherIra = episode("Football is back", {
   person_name: "Ira Weintraub",
   published_at: "2026-09-01",
 });
-assert.equal(isOwnTopShowHostEpisode(talHost, [ira], "ira"), true);
-assert.equal(isOwnTopShowHostEpisode(guestSpot, [ira], "ira"), false);
+assert.equal(isOwnTopShowEpisode(talHost, [ira], "ira"), true);
+assert.equal(isOwnTopShowEpisode(guestSpot, [ira], "ira"), false);
 
 const rankedEps = rankEpisodes(
   [talHost, guestSpot, otherIra],
@@ -123,6 +187,121 @@ const rankedEps = rankEpisodes(
 assert.equal(rankedEps[0]?.show_title, "Fresh Air");
 assert.equal(rankedEps[1]?.show_title, "This American Life");
 assert.equal(rankedEps[2]?.person_name, "Ira Weintraub");
+
+const michelle = person("Michelle Obama", {
+  episode_count: 60,
+  top_show_title: "IMO with Michelle Obama and Craig Robinson",
+  own_show_slug: "imo-with-michelle-obama-and-craig-robinson",
+});
+const imoHost = episode("Embracing a New Era with H.E.R.", {
+  show_title: "IMO with Michelle Obama and Craig Robinson",
+  show_slug: "imo-with-michelle-obama-and-craig-robinson",
+  role_label: "Host",
+  person_name: "Michelle Obama",
+  published_at: "2026-09-16",
+});
+const imoProducer = episode("Write Down the Stupid Thoughts", {
+  show_title: "IMO with Michelle Obama and Craig Robinson",
+  show_slug: "imo-with-michelle-obama-and-craig-robinson",
+  role_label: "Producer",
+  person_name: "Michelle Obama",
+  published_at: "2026-08-26",
+});
+const otherShowGuest = episode("The Michelle Obama Interview", {
+  show_title: "Talk Easy with Sam Fragoso",
+  show_slug: "talk-easy-with-sam-fragoso",
+  role_label: "Guest",
+  person_name: "Michelle Obama",
+  published_at: "2026-01-02",
+});
+const otherShowTitle = episode("Joe Rogan/Guy Ritchie- Own your Destiny", {
+  show_title: "Elysium Audio",
+  show_slug: "elysium-audio",
+  role_label: null,
+  person_name: null,
+  published_at: "2026-05-04",
+});
+
+assert.equal(isOwnTopShowEpisode(imoHost, [michelle], "Michelle Obama"), true);
+assert.equal(isOwnTopShowEpisode(imoProducer, [michelle], "Michelle Obama"), true);
+assert.equal(
+  isOwnTopShowEpisode(otherShowGuest, [michelle], "Michelle Obama"),
+  false
+);
+
+const michelleRanked = rankEpisodes(
+  [imoHost, imoProducer, otherShowGuest],
+  "Michelle Obama",
+  [michelle]
+);
+assert.equal(michelleRanked[0]?.show_title, "Talk Easy with Sam Fragoso");
+assert.ok(
+  michelleRanked
+    .slice(1)
+    .every((ep) => ep.show_slug === "imo-with-michelle-obama-and-craig-robinson")
+);
+
+const conan = person("Conan", {
+  episode_count: 41,
+  top_show_title: "Conan O’Brien Needs A Friend",
+  own_show_slug: "conan-obrien-needs-a-friend",
+});
+const conafGuest = episode("Matt Groening", {
+  show_title: "Conan O’Brien Needs A Friend",
+  show_slug: "conan-obrien-needs-a-friend",
+  role_label: "Guest",
+  person_name: "Conan",
+  published_at: "2026-09-07",
+});
+const conanElsewhere = episode("Conan on IMO", {
+  show_title: "IMO with Michelle Obama and Craig Robinson",
+  show_slug: "imo-with-michelle-obama-and-craig-robinson",
+  role_label: "Guest",
+  person_name: "Conan O'Brien",
+  published_at: "2026-01-03",
+});
+assert.equal(isOwnTopShowEpisode(conafGuest, [conan], "conan"), true);
+assert.equal(isOwnTopShowEpisode(conanElsewhere, [conan], "conan"), false);
+const otherNameOnOwnShow = episode("The Bonering Conan", {
+  show_title: "Conan O’Brien Needs A Friend",
+  show_slug: "conan-obrien-needs-a-friend",
+  role_label: "Guest",
+  person_name: "The Bonering Conan",
+});
+assert.equal(isOwnTopShowEpisode(otherNameOnOwnShow, [conan], "conan"), true);
+const conanRanked = rankEpisodes([conafGuest, conanElsewhere], "conan", [
+  conan,
+  person("Conan O'Brien", {
+    episode_count: 1,
+    top_show_title: "IMO with Michelle Obama and Craig Robinson",
+    own_show_title: null,
+    own_show_slug: null,
+  }),
+]);
+assert.equal(
+  conanRanked[0]?.show_slug,
+  "imo-with-michelle-obama-and-craig-robinson"
+);
+
+const joe = person("Joe Rogan", {
+  episode_count: 0,
+  top_show_title: "The Joe Rogan Experience",
+  own_show_slug: "the-joe-rogan-experience",
+});
+const jreHost = episode("JRE #2000", {
+  show_title: "The Joe Rogan Experience",
+  show_slug: "the-joe-rogan-experience",
+  role_label: "Host",
+  person_name: "Joe Rogan",
+  published_at: "2026-09-01",
+});
+assert.equal(isOwnTopShowEpisode(jreHost, [joe], "Joe Rogan"), true);
+assert.equal(isOwnTopShowEpisode(otherShowTitle, [joe], "Joe Rogan"), false);
+const joeRanked = rankEpisodes([jreHost, otherShowTitle], "Joe Rogan", [joe]);
+assert.equal(joeRanked[0]?.show_slug, "elysium-audio");
+assert.equal(joeRanked[1]?.show_slug, "the-joe-rogan-experience");
+
+assert.deepEqual(rankEpisodes([], "Theo Von", []), []);
 
 assert.equal(
   podcastSearchSubtitle(
@@ -135,10 +314,7 @@ assert.equal(
   ),
   "News · ★ 8.9 · 80 eps · Serial Productions"
 );
-assert.equal(
-  podcastSearchSubtitle(podcast("Untitled")),
-  null
-);
+assert.equal(podcastSearchSubtitle(podcast("Untitled")), null);
 assert.equal(
   podcastSearchSubtitle(
     podcast("Reply All", { rating_average: 9.1, genre_name: null, network_name: null })
