@@ -17,10 +17,74 @@ import type {
   PersonDetail,
   Podcast,
   PodcastDetail,
+  PodcastStatus,
   Season,
   SimilarPodcast,
   TitleCastMember,
 } from "@/lib/types";
+
+type SimilarPodcastRankedRow = {
+  similar_podcast_id: string;
+  similar_slug: string;
+  similar_title: string;
+  similar_cover_url: string | null;
+  rating_average: number | null;
+  rating_count: number | null;
+  status: PodcastStatus;
+  shared_genre_name: string | null;
+};
+
+type PodcastGenreJoinPodcast = {
+  id: string;
+  slug: string;
+  title: string;
+  cover_image_url: string | null;
+  rating_average: number | null;
+  rating_count: number | null;
+  status: PodcastStatus;
+};
+
+type PodcastGenreJoinRow = {
+  genre_id: string;
+  genres: { slug: string; name: string } | null;
+  podcasts: PodcastGenreJoinPodcast | null;
+};
+
+type PersonWorkPodcast = {
+  id: string;
+  slug: string;
+  title: string;
+  cover_image_url: string | null;
+  rating_average: number | null;
+  rating_count: number | null;
+  published_at: string | null;
+};
+
+type PersonPodcastCreditRow = {
+  role_id: CreditRoleId;
+  billing_order: number;
+  character_name: string | null;
+  credit_roles: { label: string } | null;
+  podcasts: PersonWorkPodcast | null;
+};
+
+type PersonEpisodeCreditRow = {
+  role_id: CreditRoleId;
+  billing_order: number;
+  character_name: string | null;
+  credit_roles: { label: string } | null;
+  episodes:
+    | {
+        id: string;
+        slug: string;
+        title: string;
+        cover_image_url: string | null;
+        published_at: string | null;
+        podcast_id: string;
+        podcasts: PersonWorkPodcast | null;
+      }
+    | null;
+};
 
 type CreditRow = {
   role_id: CreditRoleId;
@@ -154,7 +218,7 @@ async function loadSimilarPodcasts(
     .limit(12);
 
   if (!view.error && view.data && view.data.length > 0) {
-    return view.data.map((row: any) => ({
+    return (view.data as SimilarPodcastRankedRow[]).map((row) => ({
       id: row.similar_podcast_id,
       slug: row.similar_slug,
       title: row.similar_title,
@@ -175,8 +239,8 @@ async function loadSimilarPodcasts(
     .neq("podcast_id", podcastId);
 
   const byId = new Map<string, SimilarPodcast>();
-  for (const row of data ?? []) {
-    const pod = (row as any).podcasts;
+  for (const row of (data ?? []) as unknown as PodcastGenreJoinRow[]) {
+    const pod = row.podcasts;
     if (!pod?.id || byId.has(pod.id)) continue;
     byId.set(pod.id, {
       id: pod.id,
@@ -186,7 +250,7 @@ async function loadSimilarPodcasts(
       rating_average: pod.rating_average,
       rating_count: pod.rating_count,
       status: pod.status,
-      shared_genre_name: (row as any).genres?.name ?? null,
+      shared_genre_name: row.genres?.name ?? null,
     });
   }
 
@@ -312,8 +376,8 @@ export async function getPersonDetail(
 
   const credits: CreditOnWork[] = [];
 
-  for (const row of podcastCredits ?? []) {
-    const r = row as any;
+  for (const row of (podcastCredits ?? []) as unknown as PersonPodcastCreditRow[]) {
+    const r = row;
     if (!r.podcasts) continue;
     credits.push({
       role_id: r.role_id,
@@ -324,8 +388,8 @@ export async function getPersonDetail(
     });
   }
 
-  for (const row of episodeCredits ?? []) {
-    const r = row as any;
+  for (const row of (episodeCredits ?? []) as unknown as PersonEpisodeCreditRow[]) {
+    const r = row;
     const ep = r.episodes;
     if (!ep?.podcasts) continue;
     credits.push({
