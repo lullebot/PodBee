@@ -214,6 +214,7 @@ function GroupedEpisodeList({
         <button
           type="button"
           onClick={onExpand}
+          aria-expanded={false}
           className="w-full py-4 text-[15px] font-medium text-[#007AFF] hover:opacity-80"
         >
           {moreLabel}

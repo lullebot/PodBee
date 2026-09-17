@@ -55,19 +55,19 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
                 {profession}
               </p>
             ) : null}
-            {credits.length > 0 ? (
+            {showLabel || episodeCreditCount > 0 ? (
               <p className="mt-4 text-[15px] text-white/55">
                 {showLabel ? (
-                  <>
-                    <a href="#shows" className="text-[#007AFF] hover:opacity-80">
-                      {showLabel}
-                    </a>
-                    {" · "}
-                  </>
+                  <a href="#shows" className="text-[#007AFF] hover:opacity-80">
+                    {showLabel}
+                  </a>
                 ) : null}
-                <a href="#episodes" className="text-[#007AFF] hover:opacity-80">
-                  {episodeLabel}
-                </a>
+                {showLabel && episodeCreditCount > 0 ? " · " : null}
+                {episodeCreditCount > 0 ? (
+                  <a href="#episodes" className="text-[#007AFF] hover:opacity-80">
+                    {episodeLabel}
+                  </a>
+                ) : null}
               </p>
             ) : null}
             {website ? (
