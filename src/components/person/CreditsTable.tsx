@@ -2,58 +2,28 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import type { CreditOnWork, CreditRoleId } from "@/lib/types";
+import type { CreditOnWork } from "@/lib/types";
+import {
+  LONG_EPISODE_LIST,
+  buildShowFilmography,
+  chipsForCredits,
+  groupEpisodeCreditsByShow,
+  matchesRoleFilter,
+  newestFirst,
+  roleLine,
+  type EpisodeShowGroup,
+  type ShowFilmographyRow,
+} from "@/lib/person-credits";
 import { Card } from "@/components/ui/Card";
-import { formatDate, yearOf } from "@/lib/format";
-
-const ROLE_CHIPS: Array<{
-  id: string;
-  label: string;
-  roles: CreditRoleId[] | null;
-}> = [
-  { id: "all", label: "All", roles: null },
-  { id: "host", label: "Host", roles: ["host", "co_host"] },
-  { id: "guest", label: "Guest", roles: ["guest"] },
-  { id: "correspondent", label: "Correspondent", roles: ["correspondent"] },
-  { id: "producer", label: "Producer", roles: ["producer", "executive_producer"] },
-  { id: "writer", label: "Writer", roles: ["writer"] },
-  { id: "editor", label: "Editor", roles: ["editor"] },
-  { id: "narrator", label: "Narrator", roles: ["narrator"] },
-];
-
-function creditTime(c: CreditOnWork): number | null {
-  const iso =
-    c.work.kind === "episode"
-      ? c.work.episode.published_at
-      : c.work.podcast.published_at;
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  return Number.isNaN(t) ? null : t;
-}
-
-function newestFirst(credits: CreditOnWork[]): CreditOnWork[] {
-  return credits.slice().sort((a, b) => {
-    const ta = creditTime(a);
-    const tb = creditTime(b);
-    if (ta == null && tb == null) return 0;
-    if (ta == null) return 1;
-    if (tb == null) return -1;
-    return tb - ta;
-  });
-}
-
-function roleLine(c: CreditOnWork): string {
-  return c.character_name
-    ? `${c.role_label} · as ${c.character_name}`
-    : c.role_label;
-}
+import { Cover } from "@/components/ui/Cover";
+import { formatDate } from "@/lib/format";
 
 function RoleChips({
   chips,
   filter,
   onChange,
 }: {
-  chips: typeof ROLE_CHIPS;
+  chips: ReturnType<typeof chipsForCredits>;
   filter: string;
   onChange: (id: string) => void;
 }) {
@@ -78,11 +48,192 @@ function RoleChips({
   );
 }
 
+function showMeta(row: ShowFilmographyRow): string | null {
+  const parts: string[] = [];
+  const role = roleLine(row);
+  if (role) parts.push(role);
+  if (row.episode_count > 0) {
+    parts.push(
+      `${row.episode_count} episode${row.episode_count === 1 ? "" : "s"}`
+    );
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function ShowFilmography({ rows }: { rows: ShowFilmographyRow[] }) {
+  return (
+    <ul className="px-5 sm:px-6">
+      {rows.map((row) => {
+        const meta = showMeta(row);
+        return (
+          <li
+            key={row.podcast.id}
+            className="border-b border-white/10 last:border-0"
+          >
+            <Link
+              href={`/podcasts/${row.podcast.slug}`}
+              className="flex items-center gap-4 py-4 group"
+            >
+              <Cover
+                src={row.podcast.cover_image_url}
+                alt={row.podcast.title}
+                size="sm"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-semibold tracking-tight text-white group-hover:text-[#007AFF] transition-colors truncate">
+                  {row.podcast.title}
+                </p>
+                {meta ? (
+                  <p className="mt-1 text-[13px] text-white/55 truncate">
+                    {meta}
+                  </p>
+                ) : null}
+              </div>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function EpisodeTable({ credits }: { credits: CreditOnWork[] }) {
+  return (
+    <table className="w-full min-w-[32rem] text-left">
+      <thead>
+        <tr className="text-[12px] uppercase tracking-wide text-white/40 border-b border-white/10">
+          <th className="px-5 sm:px-6 py-3 font-medium w-32">Date</th>
+          <th className="px-3 py-3 font-medium">Episode</th>
+          <th className="px-3 py-3 font-medium">Show</th>
+          <th className="px-5 sm:px-6 py-3 font-medium w-36">Role</th>
+        </tr>
+      </thead>
+      <tbody>
+        {credits.map((c, i) =>
+          c.work.kind === "episode" ? (
+            <tr
+              key={`${c.role_id}-${c.work.episode.id}-${i}`}
+              className="border-b border-white/10 last:border-0"
+            >
+              <td className="px-5 sm:px-6 py-3.5 text-[14px] tabular-nums text-white/55 align-top whitespace-nowrap">
+                {formatDate(c.work.episode.published_at) ?? "—"}
+              </td>
+              <td className="px-3 py-3.5 align-top">
+                <Link
+                  href={`/podcasts/${c.work.podcast.slug}/${c.work.episode.slug}`}
+                  className="text-[15px] font-semibold tracking-tight text-white hover:text-[#007AFF] transition-colors"
+                >
+                  {c.work.episode.title}
+                </Link>
+              </td>
+              <td className="px-3 py-3.5 align-top">
+                <Link
+                  href={`/podcasts/${c.work.podcast.slug}`}
+                  className="text-[14px] text-white/65 hover:text-[#007AFF] transition-colors"
+                >
+                  {c.work.podcast.title}
+                </Link>
+              </td>
+              <td className="px-5 sm:px-6 py-3.5 text-[14px] text-white/65 align-top">
+                {roleLine(c)}
+              </td>
+            </tr>
+          ) : null
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+function GroupedEpisodeList({
+  groups,
+  collapsed,
+  onExpand,
+}: {
+  groups: EpisodeShowGroup[];
+  collapsed: boolean;
+  onExpand: () => void;
+}) {
+  const visible = collapsed && groups.length > 1 ? groups.slice(0, 1) : groups;
+  const hidden = collapsed && groups.length > 1 ? groups.slice(1) : [];
+  const hiddenEpisodes = hidden.reduce((n, g) => n + g.credits.length, 0);
+  const moreLabel =
+    hidden.length === 1
+      ? `See 1 more show`
+      : `See ${hidden.length} more shows`;
+
+  return (
+    <div>
+      {visible.map((group) => (
+        <div
+          key={group.podcast.id}
+          className="border-b border-white/10 last:border-0"
+        >
+          <div className="flex items-baseline justify-between gap-4 px-5 sm:px-6 pt-5 pb-2">
+            <h3 className="min-w-0 text-[15px] font-semibold tracking-tight">
+              <Link
+                href={`/podcasts/${group.podcast.slug}`}
+                className="text-white hover:text-[#007AFF] transition-colors"
+              >
+                {group.podcast.title}
+              </Link>
+            </h3>
+            <span className="shrink-0 text-[13px] text-white/45">
+              {group.credits.length} episode
+              {group.credits.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <ul>
+            {group.credits.map((c, i) =>
+              c.work.kind === "episode" ? (
+                <li
+                  key={`${c.role_id}-${c.work.episode.id}-${i}`}
+                  className="border-t border-white/10"
+                >
+                  <Link
+                    href={`/podcasts/${c.work.podcast.slug}/${c.work.episode.slug}`}
+                    className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-4 px-5 sm:px-6 py-3.5 group"
+                  >
+                    <span className="sm:w-32 shrink-0 text-[14px] tabular-nums text-white/55">
+                      {formatDate(c.work.episode.published_at) ?? "—"}
+                    </span>
+                    <span className="min-w-0 flex-1 text-[15px] font-semibold tracking-tight text-white group-hover:text-[#007AFF] transition-colors">
+                      {c.work.episode.title}
+                    </span>
+                    <span className="sm:w-36 shrink-0 text-[14px] text-white/65 sm:text-right">
+                      {roleLine(c)}
+                    </span>
+                  </Link>
+                </li>
+              ) : null
+            )}
+          </ul>
+        </div>
+      ))}
+      {hidden.length > 0 ? (
+        <button
+          type="button"
+          onClick={onExpand}
+          className="w-full py-4 text-[15px] font-medium text-[#007AFF] hover:opacity-80"
+        >
+          {moreLabel}
+          {hiddenEpisodes > 0 ? (
+            <span className="text-white/45">
+              {` · ${hiddenEpisodes} episode${hiddenEpisodes === 1 ? "" : "s"}`}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function CreditsTable({ credits }: { credits: CreditOnWork[] }) {
   const [filter, setFilter] = useState("all");
+  const [expandedShows, setExpandedShows] = useState(false);
 
-  const showCredits = useMemo(
-    () => newestFirst(credits.filter((c) => c.work.kind === "podcast")),
+  const filmography = useMemo(
+    () => buildShowFilmography(credits),
     [credits]
   );
   const episodeCredits = useMemo(
@@ -90,75 +241,50 @@ export function CreditsTable({ credits }: { credits: CreditOnWork[] }) {
     [credits]
   );
 
-  const chips = ROLE_CHIPS.filter((chip) => {
-    if (chip.roles == null) return true;
-    return credits.some((c) => chip.roles!.includes(c.role_id));
-  });
+  const chips = chipsForCredits(credits);
 
   const visibleShows =
     filter === "all"
-      ? showCredits
-      : showCredits.filter((c) => {
-          const chip = ROLE_CHIPS.find((x) => x.id === filter);
-          return chip?.roles?.includes(c.role_id) ?? false;
-        });
+      ? filmography
+      : filmography.filter((row) =>
+          row.role_ids.some((id) => matchesRoleFilter(id, filter))
+        );
   const visibleEpisodes =
     filter === "all"
       ? episodeCredits
-      : episodeCredits.filter((c) => {
-          const chip = ROLE_CHIPS.find((x) => x.id === filter);
-          return chip?.roles?.includes(c.role_id) ?? false;
-        });
+      : episodeCredits.filter((c) => matchesRoleFilter(c.role_id, filter));
 
-  const hasShows = showCredits.length > 0;
+  const grouped = useMemo(
+    () =>
+      visibleEpisodes.length >= LONG_EPISODE_LIST
+        ? groupEpisodeCreditsByShow(visibleEpisodes)
+        : null,
+    [visibleEpisodes]
+  );
+
+  const hasShows = filmography.length > 0;
 
   return (
     <div className="mt-16">
-      <RoleChips chips={chips} filter={filter} onChange={setFilter} />
+      <RoleChips
+        chips={chips}
+        filter={filter}
+        onChange={(id) => {
+          setFilter(id);
+          setExpandedShows(false);
+        }}
+      />
 
       {hasShows ? (
         <section id="shows" className="scroll-mt-28">
           <h2 className="mt-8 text-2xl font-semibold tracking-tight">Shows</h2>
-          <Card className="mt-6 overflow-x-auto">
+          <Card className="mt-6 overflow-hidden">
             {visibleShows.length === 0 ? (
               <p className="px-6 py-10 text-[15px] text-white/45">
                 No shows in this role.
               </p>
             ) : (
-              <table className="w-full min-w-[24rem] text-left">
-                <thead>
-                  <tr className="text-[12px] uppercase tracking-wide text-white/40 border-b border-white/10">
-                    <th className="px-5 sm:px-6 py-3 font-medium w-20">Year</th>
-                    <th className="px-3 py-3 font-medium">Show</th>
-                    <th className="px-5 sm:px-6 py-3 font-medium w-40">Role</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleShows.map((c, i) =>
-                    c.work.kind === "podcast" ? (
-                      <tr
-                        key={`${c.role_id}-${c.work.podcast.id}-${i}`}
-                        className="border-b border-white/10 last:border-0"
-                      >
-                        <td className="px-5 sm:px-6 py-3.5 text-[14px] tabular-nums text-white/55 align-top">
-                          {yearOf(c.work.podcast.published_at) ?? "—"}
-                        </td>
-                        <td className="px-3 py-3.5 align-top">
-                          <Link
-                            href={`/podcasts/${c.work.podcast.slug}`}
-                            className="text-[15px] font-semibold tracking-tight text-white hover:text-[#007AFF] transition-colors"
-                          >
-                            {c.work.podcast.title}
-                          </Link>
-                        </td>
-                        <td className="px-5 sm:px-6 py-3.5 text-[14px] text-white/65 align-top">
-                          {roleLine(c)}
-                        </td>
-                      </tr>
-                    ) : null
-                  )}
-                </tbody>
-              </table>
+              <ShowFilmography rows={visibleShows} />
             )}
           </Card>
         </section>
@@ -178,50 +304,14 @@ export function CreditsTable({ credits }: { credits: CreditOnWork[] }) {
             <p className="px-6 py-10 text-[15px] text-white/45">
               No episode appearances in this role.
             </p>
+          ) : grouped ? (
+            <GroupedEpisodeList
+              groups={grouped}
+              collapsed={!expandedShows}
+              onExpand={() => setExpandedShows(true)}
+            />
           ) : (
-            <table className="w-full min-w-[32rem] text-left">
-              <thead>
-                <tr className="text-[12px] uppercase tracking-wide text-white/40 border-b border-white/10">
-                  <th className="px-5 sm:px-6 py-3 font-medium w-32">Date</th>
-                  <th className="px-3 py-3 font-medium">Episode</th>
-                  <th className="px-3 py-3 font-medium">Show</th>
-                  <th className="px-5 sm:px-6 py-3 font-medium w-36">Role</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleEpisodes.map((c, i) =>
-                  c.work.kind === "episode" ? (
-                    <tr
-                      key={`${c.role_id}-${c.work.episode.id}-${i}`}
-                      className="border-b border-white/10 last:border-0"
-                    >
-                      <td className="px-5 sm:px-6 py-3.5 text-[14px] tabular-nums text-white/55 align-top whitespace-nowrap">
-                        {formatDate(c.work.episode.published_at) ?? "—"}
-                      </td>
-                      <td className="px-3 py-3.5 align-top">
-                        <Link
-                          href={`/podcasts/${c.work.podcast.slug}/${c.work.episode.slug}`}
-                          className="text-[15px] font-semibold tracking-tight text-white hover:text-[#007AFF] transition-colors"
-                        >
-                          {c.work.episode.title}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-3.5 align-top">
-                        <Link
-                          href={`/podcasts/${c.work.podcast.slug}`}
-                          className="text-[14px] text-white/65 hover:text-[#007AFF] transition-colors"
-                        >
-                          {c.work.podcast.title}
-                        </Link>
-                      </td>
-                      <td className="px-5 sm:px-6 py-3.5 text-[14px] text-white/65 align-top">
-                        {roleLine(c)}
-                      </td>
-                    </tr>
-                  ) : null
-                )}
-              </tbody>
-            </table>
+            <EpisodeTable credits={visibleEpisodes} />
           )}
         </Card>
       </section>

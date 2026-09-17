@@ -1,15 +1,21 @@
 import Link from "next/link";
 import type { PersonDetail } from "@/lib/types";
+import {
+  countEpisodeCredits,
+  professionFromRoles,
+  uniqueShowCount,
+} from "@/lib/person-credits";
 import { Cover } from "@/components/ui/Cover";
 import { CreditsTable } from "@/components/person/CreditsTable";
 import { KnownFor } from "@/components/person/KnownFor";
 
 export function PersonProfile({ data }: { data: PersonDetail }) {
   const { person, credits } = data;
-  const showCredits = credits.filter((c) => c.work.kind === "podcast");
-  const showCount = new Set(showCredits.map((c) => c.work.podcast.id)).size;
-  const episodeCreditCount = credits.filter((c) => c.work.kind === "episode")
-    .length;
+  const profession = professionFromRoles(credits);
+  const showCount = uniqueShowCount(credits);
+  const episodeCreditCount = countEpisodeCredits(credits);
+  const bio = person.bio?.trim() || null;
+  const website = person.website_url?.trim() || null;
 
   const showLabel =
     showCount > 0
@@ -44,16 +50,18 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
             <h1 className="mt-2 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05]">
               {person.display_name}
             </h1>
-            {person.bio ? (
-              <p className="mt-4 text-[17px] leading-relaxed text-white/75 whitespace-pre-line line-clamp-5 max-w-2xl">
-                {person.bio}
+            {profession ? (
+              <p className="mt-3 text-lg text-white/55 leading-snug">
+                {profession}
               </p>
             ) : null}
             {credits.length > 0 ? (
               <p className="mt-4 text-[15px] text-white/55">
                 {showLabel ? (
                   <>
-                    {showLabel}
+                    <a href="#shows" className="text-[#007AFF] hover:opacity-80">
+                      {showLabel}
+                    </a>
                     {" · "}
                   </>
                 ) : null}
@@ -62,10 +70,10 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
                 </a>
               </p>
             ) : null}
-            {person.website_url ? (
+            {website ? (
               <div className="mt-4">
                 <a
-                  href={person.website_url}
+                  href={website}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[#007AFF] text-[15px] font-medium hover:opacity-80"
@@ -73,6 +81,11 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
                   Website
                 </a>
               </div>
+            ) : null}
+            {bio ? (
+              <p className="mt-4 text-[17px] leading-relaxed text-white/75 whitespace-pre-line line-clamp-4 max-w-2xl">
+                {bio}
+              </p>
             ) : null}
           </div>
         </header>
