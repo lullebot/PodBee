@@ -1,8 +1,20 @@
 import { supabase } from "@/lib/supabase";
-import type { PersonSearchHit, PodcastSearchHit, SearchHit } from "@/lib/search-hits";
+import {
+  searchNameRank,
+  type EpisodeSearchHit,
+  type PersonSearchHit,
+  type PodcastSearchHit,
+  type SearchHit,
+} from "@/lib/search-hits";
 
-export type { PersonSearchHit, PodcastSearchHit, SearchHit };
-export { personSearchSubtitle, personTypeaheadMeta } from "@/lib/search-hits";
+export type { PersonSearchHit, PodcastSearchHit, EpisodeSearchHit, SearchHit };
+export {
+  episodeHref,
+  episodeSearchSubtitle,
+  isGuestIntent,
+  personSearchSubtitle,
+  personTypeaheadMeta,
+} from "@/lib/search-hits";
 
 const PERSON_COLS = "id, slug, display_name, image_url";
 
@@ -11,6 +23,32 @@ type PersonRow = {
   slug: string;
   display_name: string;
   image_url: string | null;
+};
+
+type NestedPodcast = {
+  slug?: string | null;
+  title?: string | null;
+  cover_image_url?: string | null;
+};
+
+type NestedEpisode = {
+  id?: string | null;
+  slug?: string | null;
+  title?: string | null;
+  published_at?: string | null;
+  cover_image_url?: string | null;
+  podcasts?: NestedPodcast | NestedPodcast[] | null;
+};
+
+type NestedPerson = {
+  display_name?: string | null;
+};
+
+type CreditRow = {
+  role_id?: string | null;
+  credit_roles?: { label?: string | null } | { label?: string | null }[] | null;
+  people?: NestedPerson | NestedPerson[] | null;
+  episodes?: NestedEpisode | NestedEpisode[] | null;
 };
 
 function sanitizeTerm(q: string): string {
@@ -22,19 +60,10 @@ function asOne<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
-function nameRank(name: string, term: string): number {
-  const n = name.trim().toLowerCase();
-  const t = term.trim().toLowerCase();
-  if (n === t) return 0;
-  if (n.startsWith(t)) return 1;
-  if (n.split(/\s+/).some((word) => word.startsWith(t))) return 2;
-  return 3;
-}
-
 function rankPeople(hits: PersonSearchHit[], term: string): PersonSearchHit[] {
   return hits.slice().sort((a, b) => {
-    const ra = nameRank(a.display_name, term);
-    const rb = nameRank(b.display_name, term);
+    const ra = searchNameRank(a.display_name, term);
+    const rb = searchNameRank(b.display_name, term);
     if (ra !== rb) return ra - rb;
     if (b.episode_count !== a.episode_count) return b.episode_count - a.episode_count;
     return a.display_name.localeCompare(b.display_name);
@@ -90,6 +119,88 @@ function collectPeople(
     }
   }
   return [...byId.values()];
+}
+
+function roleLabel(row: CreditRow): string | null {
+  const nested = asOne(row.credit_roles)?.label;
+  if (typeof nested === "string" && nested.length > 0) return nested;
+  if (typeof row.role_id === "string" && row.role_id.length > 0) return row.role_id;
+  return null;
+}
+
+function mapCreditToHit(row: CreditRow): EpisodeSearchHit | null {
+  const episode = asOne(row.episodes);
+  const podcast = asOne(episode?.podcasts);
+  const person = asOne(row.people);
+  if (
+    !episode?.id ||
+    !episode.slug ||
+    !episode.title ||
+    !podcast?.slug ||
+    !podcast.title
+  ) {
+    return null;
+  }
+  return {
+    kind: "episode",
+    id: episode.id,
+    episode_slug: episode.slug,
+    episode_title: episode.title,
+    show_slug: podcast.slug,
+    show_title: podcast.title,
+    cover_image_url: episode.cover_image_url ?? podcast.cover_image_url ?? null,
+    published_at: episode.published_at ?? null,
+    role_label: roleLabel(row),
+    person_name: person?.display_name ?? null,
+  };
+}
+
+function mapTitleHit(row: NestedEpisode): EpisodeSearchHit | null {
+  const podcast = asOne(row.podcasts);
+  if (!row.id || !row.slug || !row.title || !podcast?.slug || !podcast.title) {
+    return null;
+  }
+  return {
+    kind: "episode",
+    id: row.id,
+    episode_slug: row.slug,
+    episode_title: row.title,
+    show_slug: podcast.slug,
+    show_title: podcast.title,
+    cover_image_url: row.cover_image_url ?? podcast.cover_image_url ?? null,
+    published_at: row.published_at ?? null,
+    role_label: null,
+    person_name: null,
+  };
+}
+
+function mergeEpisodeHits(hits: EpisodeSearchHit[]): EpisodeSearchHit[] {
+  const byId = new Map<string, EpisodeSearchHit>();
+  for (const hit of hits) {
+    const prev = byId.get(hit.id);
+    if (!prev) {
+      byId.set(hit.id, hit);
+      continue;
+    }
+    if (!prev.role_label && hit.role_label) byId.set(hit.id, hit);
+  }
+  return [...byId.values()];
+}
+
+function rankEpisodes(hits: EpisodeSearchHit[], term: string): EpisodeSearchHit[] {
+  return hits.slice().sort((a, b) => {
+    const pa = searchNameRank(a.person_name ?? "", term);
+    const pb = searchNameRank(b.person_name ?? "", term);
+    if (pa !== pb) return pa - pb;
+    const ta = searchNameRank(a.episode_title, term);
+    const tb = searchNameRank(b.episode_title, term);
+    if (ta !== tb) return ta - tb;
+    const da = a.published_at ? Date.parse(a.published_at) : 0;
+    const db = b.published_at ? Date.parse(b.published_at) : 0;
+    const na = Number.isNaN(da) ? 0 : da;
+    const nb = Number.isNaN(db) ? 0 : db;
+    return nb - na;
+  });
 }
 
 /**
@@ -177,6 +288,68 @@ export async function searchPeople(
   return rankPeople(hits, term).slice(0, limit);
 }
 
+/**
+ * Episode rows for guest-style queries: credits on matching people,
+ * plus episode title matches. Each hit deep-links to the episode page.
+ */
+export async function searchEpisodeAppearances(
+  q: string,
+  limit = 16
+): Promise<EpisodeSearchHit[]> {
+  const term = sanitizeTerm(q);
+  if (term.length < 2) return [];
+  const pattern = `%${term}%`;
+
+  const wordCount = term.split(/\s+/).filter(Boolean).length;
+
+  const { data: nameMatches } = await supabase
+    .from("people")
+    .select("id")
+    .ilike("display_name", pattern)
+    .limit(24);
+
+  const ids = (nameMatches ?? [])
+    .map((p) => (p as { id?: string }).id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+  // Single-token queries use credits only. Title ILIKE is too noisy
+  // ("obama" → episode about Obama, "serial" → serial-killer docs).
+  const [creditsRes, titleRes] = await Promise.all([
+    ids.length > 0
+      ? supabase
+          .from("episode_credits")
+          .select(
+            "role_id, credit_roles(label), people(display_name), episodes(id, slug, title, published_at, cover_image_url, podcasts(slug, title, cover_image_url))"
+          )
+          .in("person_id", ids)
+          .limit(240)
+      : Promise.resolve({ data: [] as CreditRow[] }),
+    wordCount >= 2
+      ? supabase
+          .from("episodes")
+          .select(
+            "id, slug, title, published_at, cover_image_url, podcasts(slug, title, cover_image_url)"
+          )
+          .ilike("title", pattern)
+          .limit(12)
+      : Promise.resolve({ data: [] as NestedEpisode[] }),
+  ]);
+
+  const fromCredits = (creditsRes.data ?? []).flatMap((row) => {
+    const hit = mapCreditToHit(row as CreditRow);
+    return hit ? [hit] : [];
+  });
+  const fromTitles = (titleRes.data ?? []).flatMap((row) => {
+    const hit = mapTitleHit(row as NestedEpisode);
+    return hit ? [hit] : [];
+  });
+
+  return rankEpisodes(mergeEpisodeHits([...fromCredits, ...fromTitles]), term).slice(
+    0,
+    limit
+  );
+}
+
 async function searchPodcasts(term: string): Promise<PodcastSearchHit[]> {
   const pattern = `%${term}%`;
   const { data: podcasts } = await supabase
@@ -213,12 +386,13 @@ export async function searchCatalog(q: string): Promise<SearchHit[]> {
   const term = sanitizeTerm(q);
   if (term.length < 2) return [];
 
-  const [podcasts, people] = await Promise.all([
+  const [podcasts, people, episodes] = await Promise.all([
     searchPodcasts(term),
     searchPeople(term, 8),
+    searchEpisodeAppearances(term, 16),
   ]);
 
-  return [...podcasts, ...people];
+  return [...podcasts, ...people, ...episodes];
 }
 
 export async function getPopularPodcasts(limit = 8) {
