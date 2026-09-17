@@ -7,8 +7,16 @@ import { EpisodeList } from "@/components/podcast/EpisodeList";
 import { TitleSubnav } from "@/components/podcast/TitleSubnav";
 import { TopCast } from "@/components/podcast/TopCast";
 import { formatYearRange } from "@/lib/format";
+import { getCurrentUser } from "@/lib/auth";
+import { getMyPodcastRating, getPodcastReviews } from "@/lib/ratings";
+import { isInListenListShow } from "@/lib/listen-list";
+import { upsertPodcastRating } from "@/app/actions/ratings";
+import { toggleListenListShow } from "@/app/actions/listen-list";
+import { RatingWidget } from "@/components/rating/RatingWidget";
+import { ReviewsSection } from "@/components/rating/ReviewsSection";
+import { ListenListButton } from "@/components/listen-list/ListenListButton";
 
-export function PodcastProfile({ data }: { data: PodcastDetail }) {
+export async function PodcastProfile({ data }: { data: PodcastDetail }) {
   const {
     podcast,
     primary_company,
@@ -21,6 +29,16 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
     first_published_at,
     latest_published_at,
   } = data;
+
+  const [current, reviews] = await Promise.all([
+    getCurrentUser(),
+    getPodcastReviews(podcast.id),
+  ]);
+  const myRating = current ? await getMyPodcastRating(current.id, podcast.id) : null;
+  const inListenList = current ? await isInListenListShow(current.id, podcast.id) : false;
+
+  const rateAction = upsertPodcastRating.bind(null, podcast.id, podcast.slug);
+  const listenListAction = toggleListenListShow.bind(null, podcast.id, podcast.slug);
 
   const network = primary_company?.name?.trim() || null;
   const years = formatYearRange(first_published_at, latest_published_at);
@@ -37,6 +55,7 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
     podcast.description ? { href: "#overview", label: "Overview" } : null,
     credits.length > 0 ? { href: "#cast", label: "Cast" } : null,
     { href: "#episodes", label: "Episodes" },
+    reviews.length > 0 ? { href: "#reviews", label: "Reviews" } : null,
     similar.length > 0 ? { href: "#more-like-this", label: "More like this" } : null,
   ].filter((x): x is { href: string; label: string } => x != null);
 
@@ -71,8 +90,8 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
 
             <div className="mt-5">
               <StarRating
-                average={podcast.rating_average}
-                count={podcast.rating_count}
+                average={podcast.display_score}
+                count={podcast.display_count}
                 size="lg"
                 empty="dash"
               />
@@ -96,6 +115,24 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
                 ))}
               </div>
             ) : null}
+
+            <div className="mt-6">
+              <ListenListButton
+                action={listenListAction}
+                initialInList={inListenList}
+                signedIn={current != null}
+                label="Listen List"
+              />
+            </div>
+
+            <div className="mt-6 max-w-xs">
+              <RatingWidget
+                action={rateAction}
+                initialRating={myRating?.rating ?? null}
+                initialReview={myRating?.review_text ?? null}
+                signedIn={current != null}
+              />
+            </div>
           </div>
         </header>
 
@@ -121,6 +158,8 @@ export function PodcastProfile({ data }: { data: PodcastDetail }) {
           total={episode_total}
           seasons={seasons}
         />
+
+        <ReviewsSection id="reviews" reviews={reviews} />
 
         {similar.length > 0 ? (
           <section id="more-like-this" className="mt-16 scroll-mt-28">

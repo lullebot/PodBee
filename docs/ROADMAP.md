@@ -5,7 +5,7 @@ Owned by Business Lead. Update when a sprint opens/closes or a bet is parked/ope
 ## North star sequence
 1. Denser capped catalog + IMDb UI polish (Sprint 3 — current)
 2. Free website ads (AdSense approved; banners parked until Sprint 3 feels done)
-3. Accounts + ratings/reviews (Apple / Google / email login)
+3. Accounts + ratings/reviews (email/password login; Sprint 4 — shipped, see below)
 4. "People like you also liked" recommendations
 
 Hard rules: free-tier only (Supabase + Vercel Hobby); never touch Vercel project apkguiden; no media player; structured audio database / IMDb for podcasts.
@@ -44,12 +44,33 @@ Checklist:
 - [ ] Further capped batches toward ~1,200 shows if under cap
 - [ ] Lukas “closer to done” → reopen banner wiring (home 5273997618 / title 8669105698)
 
-Out of scope: auth/ratings, freemium, uncapped dump, paid upgrades, player.
+Out of scope: freemium, uncapped dump, paid upgrades, player.
+
+## Sprint 4 — Accounts, ratings (shows + episodes), Listen List (bet opened + shipped)
+**Goal:** IMDb-style accounts — bare 1–10 ratings, private unless reviewed, real crowd-sourced
+score behind a settings toggle (shows keep the pipeline-seeded placeholder score until flipped),
+Listen List for shows and episodes.
+
+Checklist:
+- [x] Supabase Auth (email/password; schema leaves room for Google OAuth later, no migration needed)
+- [x] `profiles` table + trigger from `auth.users`
+- [x] `podcast_ratings` / `episode_ratings` — RLS: private unless `review_text` is set
+- [x] Aggregate triggers recompute `avg_rating`/count over ALL ratings, including anonymous ones
+- [x] `app_settings.use_real_ratings` + `podcasts_display` view — one `update` flips every show page
+      to real ratings with no deploy (episodes always show real ratings, no fake data existed for them)
+- [x] Rating widget + optional review, "Your rating: X", Reviews section on both page types
+- [x] `listen_list_shows` / `listen_list_episodes` + toggle buttons
+- [x] Profile page — Your Ratings / Your Listen List tabs
+- [ ] Flip `app_settings.use_real_ratings` to true once real show ratings have enough volume
+- [ ] Apple / Google OAuth (schema already supports it — UI not built yet)
+
+Note: `podbee_score` (the popularity/ranking input for `charts`/`chart_entries`) is untouched —
+separate curated-chart system, per AGENTS.md. The placeholder score this sprint's fake/real switch
+replaces on show pages is `podcasts.rating_average`/`rating_count` (pipeline-seeded from RSS/iTunes),
+not `podbee_score`.
 
 ## Parked (do not build until Business Lead opens the bet)
 - [ ] AdSense banners — parked until Sprint 3 feels done
-- [ ] Supabase Auth profiles + Apple / Google / email login
-- [ ] User ratings + reviews on podcasts (community track record)
 - [ ] Similar-taste recommendations from ratings
 - [ ] Freemium / CAST Pro / other non-ad revenue
 
@@ -62,4 +83,5 @@ Inform next bets after Business Lead opens them. Sprint 3 still = capped catalog
 
 ## Notes
 - Short-term revenue = website ads only (banners parked until Sprint 3 feels done).
-- Community ratings + easy login are the eventual IMDb moat — later, after catalog + ads.
+- Community ratings + easy login (Sprint 4) are the IMDb moat — shipped behind a fake/real score
+  toggle so the catalog keeps its placeholder scores until real rating volume is worth switching to.

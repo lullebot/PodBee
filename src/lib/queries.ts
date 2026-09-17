@@ -15,9 +15,9 @@ import type {
   Person,
   PersonCreditRef,
   PersonDetail,
-  Podcast,
   PodcastDetail,
   PodcastStatus,
+  PodcastWithDisplay,
   Season,
   SimilarPodcast,
   TitleCastMember,
@@ -262,14 +262,17 @@ async function loadSimilarPodcasts(
 export async function getPodcastDetail(
   slug: string
 ): Promise<PodcastDetail | null> {
+  // Show pages read display_score/display_count from podcasts_display, never
+  // rating_average/rating_count or avg_rating/real_rating_count directly —
+  // see the migration comment for how the fake/real switch works.
   const { data: podcast, error } = await supabase
-    .from("podcasts")
+    .from("podcasts_display")
     .select("*")
     .eq("slug", slug)
     .maybeSingle();
   if (error || !podcast) return null;
 
-  const p = podcast as Podcast;
+  const p = podcast as PodcastWithDisplay;
 
   const [
     { data: primary_company },
