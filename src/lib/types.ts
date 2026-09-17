@@ -331,4 +331,6 @@ export interface ChartEntry {
 export interface ChartBoard {
   chart: Chart;
   entries: ChartEntry[];
+  /** Total titles on this chart, when entries were fetched capped (home rail). */
+  total_count?: number;
 }

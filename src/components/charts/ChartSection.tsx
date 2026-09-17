@@ -5,7 +5,7 @@ import Link from "next/link";
 const THIN = 20;
 
 export function ChartSection({ board }: { board: ChartBoard }) {
-  const n = board.entries.length;
+  const n = board.total_count ?? board.entries.length;
   const thin = n > 0 && n < THIN;
 
   return (

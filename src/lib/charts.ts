@@ -253,6 +253,58 @@ export const getChartBoards = cache(async (): Promise<{
   }
 });
 
+/**
+ * Home rail: top N per chart plus each chart's true total, instead of
+ * fetching every ranked title just to slice it down for display. The
+ * "See all" link on each section goes to /charts/[slug] (getChartBoardBySlug),
+ * which does need the full list.
+ */
+export const getHomeChartBoards = cache(async (
+  limit = 10
+): Promise<{ boards: ChartBoard[]; source: "live" | "demo" }> => {
+  try {
+    const results = await Promise.all(
+      CHART_SLUGS.map(async (slug) => {
+        const [rowsRes, countRes] = await Promise.all([
+          supabase
+            .from("chart_rankings")
+            .select(CHART_RANKINGS_SELECT)
+            .eq("chart_slug", slug)
+            .order("rank")
+            .limit(limit)
+            .returns<ChartRankingRow[]>(),
+          supabase
+            .from("chart_rankings")
+            .select("chart_slug", { count: "exact", head: true })
+            .eq("chart_slug", slug),
+        ]);
+        return {
+          rows: rowsRes.data ?? [],
+          error: rowsRes.error,
+          total: countRes.count ?? 0,
+        };
+      })
+    );
+
+    if (results.every((r) => r.error) || results.every((r) => r.rows.length === 0)) {
+      return { boards: demoBoards(), source: "demo" };
+    }
+
+    const boards: ChartBoard[] = [];
+    for (const { rows, total } of results) {
+      if (rows.length === 0) continue;
+      const [board] = boardsFromRankings(rows);
+      if (board) boards.push({ ...board, total_count: total });
+    }
+    if (boards.length === 0) {
+      return { boards: demoBoards(), source: "demo" };
+    }
+    return { boards, source: "live" };
+  } catch {
+    return { boards: demoBoards(), source: "demo" };
+  }
+});
+
 export const getChartBoardBySlug = cache(async (
   slug: string
 ): Promise<{ board: ChartBoard; source: "live" | "demo" } | null> => {

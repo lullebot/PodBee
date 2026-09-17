@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { ChartSection } from "@/components/charts/ChartSection";
 import { StarRating } from "@/components/ui/StarRating";
-import { getChartBoards } from "@/lib/charts";
+import { getHomeChartBoards } from "@/lib/charts";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { AdSlot } from "@/components/ads/AdSlot";
 
@@ -15,7 +15,7 @@ const GENRE_CHIPS = [
 ];
 
 export default async function HomePage() {
-  const { boards } = await getChartBoards();
+  const { boards } = await getHomeChartBoards(10);
   const overall = boards.find((b) => b.chart.slug === "top-overall");
   const featured = overall?.entries[0];
 
