@@ -1,16 +1,79 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { Cover } from "@/components/ui/Cover";
 import {
-  episodeHref,
+  TYPEAHEAD_GROUP_LIMIT,
   episodeSearchSubtitle,
   personTypeaheadMeta,
+  podcastSearchSubtitle,
+  typeaheadHref,
   type EpisodeSearchHit,
   type PersonSearchHit,
+  type PodcastSearchHit,
   type TypeaheadHit,
 } from "@/lib/search-hits";
+
+function TypeaheadRow({
+  hit,
+  active,
+  onEnter,
+  onPick,
+}: {
+  hit: TypeaheadHit;
+  active: boolean;
+  onEnter: () => void;
+  onPick: () => void;
+}) {
+  const title =
+    hit.kind === "person"
+      ? hit.display_name
+      : hit.kind === "podcast"
+        ? hit.title
+        : hit.episode_title;
+  const meta =
+    hit.kind === "person"
+      ? personTypeaheadMeta(hit)
+      : hit.kind === "podcast"
+        ? podcastSearchSubtitle(hit)
+        : episodeSearchSubtitle(hit);
+  const src =
+    hit.kind === "person"
+      ? hit.image_url
+      : hit.kind === "podcast"
+        ? hit.cover_image_url
+        : hit.cover_image_url;
+
+  return (
+    <button
+      type="button"
+      onMouseEnter={onEnter}
+      onClick={onPick}
+      className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left ${
+        active ? "bg-white/10" : "hover:bg-white/5"
+      }`}
+    >
+      <Cover
+        src={src}
+        alt={title}
+        size="xs"
+        rounded={hit.kind === "person" ? "full" : "card"}
+        monogram={hit.kind === "person"}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] font-semibold tracking-tight">
+          {title}
+        </span>
+        {meta ? (
+          <span className="mt-0.5 block truncate text-[12px] text-white/45">
+            {meta}
+          </span>
+        ) : null}
+      </span>
+    </button>
+  );
+}
 
 export function SearchField({
   defaultValue = "",
@@ -29,10 +92,16 @@ export function SearchField({
   const [q, setQ] = useState(defaultValue);
   const [open, setOpen] = useState(false);
   const [people, setPeople] = useState<PersonSearchHit[]>([]);
+  const [podcasts, setPodcasts] = useState<PodcastSearchHit[]>([]);
   const [episodes, setEpisodes] = useState<EpisodeSearchHit[]>([]);
   const [active, setActive] = useState(0);
 
-  const items: TypeaheadHit[] = [...episodes, ...people];
+  const groups: Array<{ label: string; items: TypeaheadHit[] }> = [
+    { label: "People", items: people },
+    { label: "Podcasts", items: podcasts },
+    { label: "Episodes", items: episodes },
+  ];
+  const items: TypeaheadHit[] = groups.flatMap((g) => g.items);
 
   useEffect(() => {
     setQ(defaultValue);
@@ -42,6 +111,7 @@ export function SearchField({
     const term = q.trim();
     if (term.length < 2) {
       setPeople([]);
+      setPodcasts([]);
       setEpisodes([]);
       setOpen(false);
       return;
@@ -56,14 +126,19 @@ export function SearchField({
         if (!res.ok) return;
         const data = (await res.json()) as {
           people?: PersonSearchHit[];
+          podcasts?: PodcastSearchHit[];
           episodes?: EpisodeSearchHit[];
         };
-        const nextPeople = data.people ?? [];
-        const nextEpisodes = data.episodes ?? [];
+        const nextPeople = (data.people ?? []).slice(0, TYPEAHEAD_GROUP_LIMIT);
+        const nextPodcasts = (data.podcasts ?? []).slice(0, TYPEAHEAD_GROUP_LIMIT);
+        const nextEpisodes = (data.episodes ?? []).slice(0, TYPEAHEAD_GROUP_LIMIT);
         setPeople(nextPeople);
+        setPodcasts(nextPodcasts);
         setEpisodes(nextEpisodes);
         setActive(0);
-        setOpen(nextPeople.length > 0 || nextEpisodes.length > 0);
+        setOpen(
+          nextPeople.length > 0 || nextPodcasts.length > 0 || nextEpisodes.length > 0
+        );
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
       }
@@ -85,7 +160,7 @@ export function SearchField({
 
   function goHit(hit: TypeaheadHit) {
     setOpen(false);
-    router.push(hit.kind === "person" ? `/people/${hit.slug}` : episodeHref(hit));
+    router.push(typeaheadHref(hit));
   }
 
   const inputClass =
@@ -130,83 +205,39 @@ export function SearchField({
       {open && items.length > 0 ? (
         <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-[16px] border border-white/15 bg-[#0F2033] shadow-[0_16px_48px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
           <ul id={listId} role="listbox">
-            {episodes.length > 0 ? (
-              <li
-                role="presentation"
-                className="px-3.5 pt-2.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-white/40"
-              >
-                Episodes
-              </li>
-            ) : null}
-            {episodes.map((hit, i) => {
-              const meta = episodeSearchSubtitle(hit);
+            {groups.map((group, gi) => {
+              if (group.items.length === 0) return null;
+              const offset = groups
+                .slice(0, gi)
+                .reduce((n, g) => n + g.items.length, 0);
               return (
-                <li key={hit.id} role="option" aria-selected={i === active}>
-                  <button
-                    type="button"
-                    onMouseEnter={() => setActive(i)}
-                    onClick={() => goHit(hit)}
-                    className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left ${
-                      i === active ? "bg-white/10" : "hover:bg-white/5"
+                <Fragment key={group.label}>
+                  <li
+                    role="presentation"
+                    className={`px-3.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-white/40 ${
+                      offset > 0 ? "pt-2" : "pt-2.5"
                     }`}
                   >
-                    <Cover src={hit.cover_image_url} alt={hit.episode_title} size="xs" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-semibold tracking-tight">
-                        {hit.episode_title}
-                      </span>
-                      {meta ? (
-                        <span className="mt-0.5 block truncate text-[12px] text-white/45">
-                          {meta}
-                        </span>
-                      ) : null}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-            {people.length > 0 ? (
-              <li
-                role="presentation"
-                className={`px-3.5 pb-1 text-[11px] font-medium uppercase tracking-wide text-white/40 ${
-                  episodes.length > 0 ? "pt-2" : "pt-2.5"
-                }`}
-              >
-                People
-              </li>
-            ) : null}
-            {people.map((hit, i) => {
-              const index = episodes.length + i;
-              const meta = personTypeaheadMeta(hit);
-              return (
-                <li key={hit.id} role="option" aria-selected={index === active}>
-                  <button
-                    type="button"
-                    onMouseEnter={() => setActive(index)}
-                    onClick={() => goHit(hit)}
-                    className={`flex w-full items-center gap-3 px-3.5 py-2.5 text-left ${
-                      index === active ? "bg-white/10" : "hover:bg-white/5"
-                    }`}
-                  >
-                    <Cover
-                      src={hit.image_url}
-                      alt={hit.display_name}
-                      size="xs"
-                      rounded="full"
-                      monogram
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-semibold tracking-tight">
-                        {hit.display_name}
-                      </span>
-                      {meta ? (
-                        <span className="mt-0.5 block truncate text-[12px] text-white/45">
-                          {meta}
-                        </span>
-                      ) : null}
-                    </span>
-                  </button>
-                </li>
+                    {group.label}
+                  </li>
+                  {group.items.map((hit, i) => {
+                    const index = offset + i;
+                    return (
+                      <li
+                        key={`${hit.kind}-${hit.id}`}
+                        role="option"
+                        aria-selected={index === active}
+                      >
+                        <TypeaheadRow
+                          hit={hit}
+                          active={index === active}
+                          onEnter={() => setActive(index)}
+                          onPick={() => goHit(hit)}
+                        />
+                      </li>
+                    );
+                  })}
+                </Fragment>
               );
             })}
           </ul>
