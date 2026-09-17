@@ -3,21 +3,27 @@ import type { PersonDetail } from "@/lib/types";
 import { Cover } from "@/components/ui/Cover";
 import { CreditsTable } from "@/components/person/CreditsTable";
 import { KnownFor } from "@/components/person/KnownFor";
+import {
+  episodeCreditCount,
+  personShowRows,
+  professionFromRoles,
+} from "@/lib/person-credits";
 
 export function PersonProfile({ data }: { data: PersonDetail }) {
   const { person, credits } = data;
-  const showCredits = credits.filter((c) => c.work.kind === "podcast");
-  const showCount = new Set(showCredits.map((c) => c.work.podcast.id)).size;
-  const episodeCreditCount = credits.filter((c) => c.work.kind === "episode")
-    .length;
+  const shows = personShowRows(credits);
+  const showCount = shows.length;
+  const episodeCount = episodeCreditCount(credits);
+  const profession = professionFromRoles(credits);
+  const bio = person.bio?.trim() ?? "";
+  const website = person.website_url?.trim() ?? "";
 
   const showLabel =
-    showCount > 0
-      ? `${showCount} show${showCount === 1 ? "" : "s"}`
+    showCount > 0 ? `${showCount} show${showCount === 1 ? "" : "s"}` : null;
+  const episodeLabel =
+    episodeCount > 0
+      ? `${episodeCount} episode credit${episodeCount === 1 ? "" : "s"}`
       : null;
-  const episodeLabel = `${episodeCreditCount} episode credit${
-    episodeCreditCount === 1 ? "" : "s"
-  }`;
 
   return (
     <main className="min-h-screen bg-[#0B1C2C] text-white">
@@ -29,7 +35,7 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
           ← Charts
         </Link>
 
-        <header className="mt-8 flex flex-col sm:flex-row gap-8 sm:gap-10 items-start">
+        <header className="mt-8 flex flex-col sm:flex-row gap-6 sm:gap-8 items-start">
           <Cover
             src={person.image_url}
             alt={person.display_name}
@@ -38,34 +44,36 @@ export function PersonProfile({ data }: { data: PersonDetail }) {
             monogram
           />
           <div className="min-w-0 pt-1">
-            <p className="text-[13px] font-medium uppercase tracking-wide text-white/45">
-              Person
+            <p className="text-[13px] font-medium text-white/45">
+              {profession ?? "Person"}
             </p>
-            <h1 className="mt-2 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05]">
+            <h1 className="mt-1.5 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05]">
               {person.display_name}
             </h1>
-            {person.bio ? (
-              <p className="mt-4 text-[17px] leading-relaxed text-white/75 whitespace-pre-line line-clamp-5 max-w-2xl">
-                {person.bio}
+            {bio ? (
+              <p className="mt-3 text-[17px] leading-relaxed text-white/75 whitespace-pre-line line-clamp-4 max-w-2xl">
+                {bio}
               </p>
             ) : null}
-            {credits.length > 0 ? (
-              <p className="mt-4 text-[15px] text-white/55">
+            {showLabel || episodeLabel ? (
+              <p className="mt-3 text-[15px] text-white/55">
                 {showLabel ? (
-                  <>
+                  <a href="#shows" className="hover:text-[#007AFF] transition-colors">
                     {showLabel}
-                    {" · "}
-                  </>
+                  </a>
                 ) : null}
-                <a href="#episodes" className="text-[#007AFF] hover:opacity-80">
-                  {episodeLabel}
-                </a>
+                {showLabel && episodeLabel ? " · " : null}
+                {episodeLabel ? (
+                  <a href="#episodes" className="text-[#007AFF] hover:opacity-80">
+                    {episodeLabel}
+                  </a>
+                ) : null}
               </p>
             ) : null}
-            {person.website_url ? (
-              <div className="mt-4">
+            {website ? (
+              <div className="mt-3">
                 <a
-                  href={person.website_url}
+                  href={website}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[#007AFF] text-[15px] font-medium hover:opacity-80"
