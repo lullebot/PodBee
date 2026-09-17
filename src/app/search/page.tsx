@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PersonSearchRow } from "@/components/search/PersonSearchRow";
 import { PodcastSearchRow } from "@/components/search/PodcastSearchRow";
 import { EpisodeResults } from "@/components/search/EpisodeResults";
@@ -138,12 +139,12 @@ export default async function SearchPage({
             <p className="mt-3 text-[15px] text-white/50 max-w-md mx-auto">
               Try a shorter name, or browse the charts while the catalog grows.
             </p>
-            <a
+            <Link
               href="/charts/top-overall"
               className="inline-block mt-6 text-[15px] font-medium text-[#007AFF] hover:opacity-80"
             >
               Browse Top Overall →
-            </a>
+            </Link>
           </div>
         ) : (
           <div className="mt-12 space-y-12">{orderedSections}</div>

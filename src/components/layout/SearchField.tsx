@@ -90,6 +90,7 @@ export function SearchField({
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [q, setQ] = useState(defaultValue);
+  const [prevDefaultValue, setPrevDefaultValue] = useState(defaultValue);
   const [open, setOpen] = useState(false);
   const [people, setPeople] = useState<PersonSearchHit[]>([]);
   const [podcasts, setPodcasts] = useState<PodcastSearchHit[]>([]);
@@ -103,19 +104,22 @@ export function SearchField({
   ];
   const items: TypeaheadHit[] = groups.flatMap((g) => g.items);
 
-  useEffect(() => {
+  // Adjust state during render when the `defaultValue` prop changes
+  // (e.g. client-side nav to a new /search?q=), instead of an Effect.
+  if (defaultValue !== prevDefaultValue) {
+    setPrevDefaultValue(defaultValue);
     setQ(defaultValue);
-  }, [defaultValue]);
-
-  useEffect(() => {
-    const term = q.trim();
-    if (term.length < 2) {
+    if (defaultValue.trim().length < 2) {
       setPeople([]);
       setPodcasts([]);
       setEpisodes([]);
       setOpen(false);
-      return;
     }
+  }
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) return;
 
     const ac = new AbortController();
     const timer = window.setTimeout(async () => {
@@ -182,7 +186,16 @@ export function SearchField({
         aria-expanded={open}
         aria-controls={listId}
         className={inputClass}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => {
+          const value = e.target.value;
+          setQ(value);
+          if (value.trim().length < 2) {
+            setPeople([]);
+            setPodcasts([]);
+            setEpisodes([]);
+            setOpen(false);
+          }
+        }}
         onFocus={() => {
           if (items.length > 0) setOpen(true);
         }}

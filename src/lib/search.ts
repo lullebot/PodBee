@@ -533,7 +533,7 @@ export async function searchPodcasts(
     .order("rating_average", { ascending: false, nullsFirst: false })
     .limit(limit);
 
-  let rows = (prefixRows ?? []) as PodcastRow[];
+  const rows = (prefixRows ?? []) as PodcastRow[];
   if (rows.length < limit) {
     const { data: containsRows } = await supabase
       .from("podcasts")
