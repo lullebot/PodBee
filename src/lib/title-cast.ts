@@ -102,12 +102,6 @@ export function buildTitleCast(
 
   return members.sort((a, b) => {
     if (a.is_host !== b.is_host) return a.is_host ? -1 : 1;
-    if (a.is_host) {
-      if (a.billing_order !== b.billing_order) {
-        return a.billing_order - b.billing_order;
-      }
-      return a.person.display_name.localeCompare(b.person.display_name);
-    }
     if (b.episode_count !== a.episode_count) {
       return b.episode_count - a.episode_count;
     }
