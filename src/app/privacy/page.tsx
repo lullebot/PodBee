@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 // A dedicated PodBee address, not anyone's personal email.
-const CONTACT_EMAIL = "";
+const CONTACT_EMAIL = "podbee.privacy@gmail.com";
 const LAST_UPDATED = "September 27, 2026";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
