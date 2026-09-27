@@ -23,9 +23,51 @@ npm run dev
   `pi-{feedId}-{title}` that aren't in the catalog render the long-tail page live from Podcast Index
 - `/podcasts/[slug]/[episodeSlug]` — episode profile (rating widget, reviews, Listen List)
 - `/people/[slug]` — person profile
-- `/login`, `/signup` — email/password auth (Supabase Auth; schema leaves room for Google OAuth
-  later with no migration)
-- `/profile` — signed-in user's Your Ratings + Your Listen List tabs
+- `/login`, `/signup` — Continue with Google, or email + password (Supabase Auth)
+- `/profile` — account email, PodBee news subscription, Your Ratings + Your Listen List tabs
+- `/unsubscribe?token=…` — one-click unsubscribe target for links in PodBee emails
+
+## Sign-in and the community list
+
+Accounts use Supabase Auth, which stores users in this project's own Postgres database — the
+data is ours and exportable at any time. On top of that, every registered user gets a row in
+`public.community_members`: email, signup date, signup method (`email` / `google`), and
+marketing consent (`marketing_opt_in` + the time it last changed). The table is private — only
+each user can read their own row, and nobody can read it through the public API.
+
+Consent is opt-in only (GDPR): an unchecked "Email me PodBee news" box at signup, a
+Subscribe/Unsubscribe toggle on `/profile`, and a per-user unsubscribe link. To pull the
+mailing list (Supabase dashboard → SQL editor, or Table editor → `community_members` → Export):
+
+```sql
+select email, unsubscribe_token from public.community_members where marketing_opt_in;
+```
+
+Every marketing email must include `https://<site>/unsubscribe?token=<unsubscribe_token>`.
+Don't send newsletters through Supabase Auth's mailer — use a dedicated email service.
+
+### One-time dashboard setup
+
+**Supabase → Authentication → URL Configuration:** set Site URL to the production URL and add
+Redirect URLs for `https://podbee.vercel.app/**`, `http://localhost:3000/**`, and (for preview
+deploys) `https://*-lullebots-projects.vercel.app/**`. Without these, confirmation emails and
+Google sign-in bounce to the wrong place.
+
+**Google sign-in** (free). The "Continue with Google" button stays hidden until this is done, then
+appears on its own within a minute — no deploy needed.
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → create a project (e.g. "PodBee").
+2. Google Auth Platform → Branding: app name "PodBee", support email → Audience: External →
+   **Publish app** (in "Testing" only listed test users can sign in).
+3. Clients → Create client → Web application → Authorized redirect URI:
+   `https://kbstedomrylyomotacer.supabase.co/auth/v1/callback` → copy Client ID + Client secret.
+4. Supabase → Authentication → Sign In / Providers → Google → enable, paste both → Save.
+
+**Apple sign-in** is not built yet — it needs the Apple Developer Program ($99/year).
+
+**Email sending:** Supabase's built-in mailer is for testing only (heavily rate-limited). Before
+real users sign up with email, connect a real provider under Authentication → Emails → SMTP
+Settings (e.g. Resend's free tier). That needs a domain to send from.
 
 ## Accounts, ratings, and Listen List
 

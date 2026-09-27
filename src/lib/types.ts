@@ -363,6 +363,16 @@ export interface Profile {
   created_at: ISODateTime;
 }
 
+/** Private community list row — readable only by its own user. */
+export interface CommunityMember {
+  user_id: UUID;
+  email: string;
+  signup_method: string;
+  signed_up_at: ISODateTime;
+  marketing_opt_in: boolean;
+  marketing_opt_in_changed_at: ISODateTime | null;
+}
+
 export interface PodcastRating {
   user_id: UUID;
   podcast_id: UUID;

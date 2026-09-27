@@ -61,8 +61,14 @@ Checklist:
 - [x] Rating widget + optional review, "Your rating: X", Reviews section on both page types
 - [x] `listen_list_shows` / `listen_list_episodes` + toggle buttons
 - [x] Profile page — Your Ratings / Your Listen List tabs
+- [x] Sign-in rebuilt: Continue with Google + email/password (Google button appears once the
+      provider is enabled in the Supabase dashboard — setup steps in README)
+- [x] `community_members` — private list of every user's email + GDPR opt-in marketing consent,
+      profile Subscribe/Unsubscribe toggle, `/unsubscribe?token=` link for emails
+- [ ] Google provider configured in Google Cloud + Supabase (Lukas — steps in README)
+- [ ] Real SMTP provider for Supabase Auth emails (blocked on choosing a domain)
+- [ ] Apple sign-in ($99/year Apple Developer Program — needs sign-off)
 - [ ] Flip `app_settings.use_real_ratings` to true once real show ratings have enough volume
-- [ ] Apple / Google OAuth (schema already supports it — UI not built yet)
 
 Note: `podbee_score` (the popularity/ranking input for `charts`/`chart_entries`) is untouched —
 separate curated-chart system, per AGENTS.md. The placeholder score this sprint's fake/real switch
