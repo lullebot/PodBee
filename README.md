@@ -19,7 +19,8 @@ npm run dev
 ## Routes
 
 - `/` — home
-- `/podcasts/[slug]` — podcast profile (rating widget, reviews, Listen List)
+- `/podcasts/[slug]` — podcast profile (rating widget, reviews, Listen List). Slugs shaped
+  `pi-{feedId}-{title}` that aren't in the catalog render the long-tail page live from Podcast Index
 - `/podcasts/[slug]/[episodeSlug]` — episode profile (rating widget, reviews, Listen List)
 - `/people/[slug]` — person profile
 - `/login`, `/signup` — email/password auth (Supabase Auth; schema leaves room for Google OAuth
@@ -50,6 +51,16 @@ including why the real-rating count column on `podcasts` is named `real_rating_c
 
 Schema lives in `supabase/migrations/` — apply with the Supabase CLI (`supabase db push`) or the
 Supabase dashboard's SQL editor against a project's `SUPABASE_ACCESS_TOKEN`.
+
+## Full catalog (long tail)
+
+The curated catalog lives in Supabase (capped for the free tier). Every other show in the open
+Podcast Index (~4.7M feeds) is still searchable and gets a page: search tops up from the Podcast
+Index API when the catalog runs short, and `/podcasts/pi-{feedId}-{title}` pages render live and
+cached. Nothing is written to Supabase, and once the pipeline ingests a show, its long-tail URL
+redirects to the catalog page. Off unless `PODCAST_INDEX_API_KEY`/`PODCAST_INDEX_API_SECRET` are
+set server-side (never `NEXT_PUBLIC_*`). Design, free-tier math, and next phases:
+[`docs/FULL_CATALOG.md`](docs/FULL_CATALOG.md).
 
 ## Design law
 

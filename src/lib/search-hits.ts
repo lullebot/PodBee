@@ -19,6 +19,10 @@ export type PodcastSearchHit = {
   genre_name: string | null;
   episode_count: number | null;
   network_name: string | null;
+  /** RSS URLs — lets search drop long-tail duplicates of catalog shows. */
+  feed_urls?: string[];
+  /** "index" = long-tail show from the open Podcast Index (not in Supabase). */
+  source?: "catalog" | "index";
 };
 
 export type PersonSearchHit = {

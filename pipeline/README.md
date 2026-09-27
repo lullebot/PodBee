@@ -41,6 +41,8 @@ python -m pipeline.ingest --feeds feeds.txt --rss-only
 
 **Podcast Index ToS:** do **not** scrape or crawl the entire index via the API (no full-catalog pagination, no `bytag` walk, no dump-scale loops). Weekly database dump is the bulk path and is out of scope here. Episode/cover detail always comes from each show’s public RSS.
 
+The website serves the rest of the index as a **long tail** that is never stored in Postgres (per-visitor lookups, cached on Vercel; see [`docs/FULL_CATALOG.md`](../docs/FULL_CATALOG.md)). Ingesting a show here "promotes" it: its long-tail URL (`/podcasts/pi-{feedId}-…`) starts redirecting to the catalog page as soon as a `podcasts.rss_url` matches the feed URL.
+
 ## Run
 
 ```bash

@@ -1,6 +1,32 @@
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/layout/SiteHeader";
+import { IndexPodcastProfile } from "@/components/podcast/IndexPodcastProfile";
 import { PodcastProfile } from "@/components/podcast/PodcastProfile";
+import {
+  getLongTailPodcast,
+  getLongTailPodcastTitle,
+  longTailIndexable,
+} from "@/lib/long-tail";
+import { parseIndexPodcastSlug } from "@/lib/podcast-index";
 import { getPodcastDetail } from "@/lib/queries";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  if (parseIndexPodcastSlug(slug) == null) return {};
+  const title = await getLongTailPodcastTitle(slug);
+  if (!title) return {};
+  return {
+    title: `${title} — PodBee`,
+    robots: longTailIndexable()
+      ? undefined
+      : { index: false, follow: true, googleBot: { index: false, follow: true } },
+  };
+}
 
 export default async function PodcastPage({
   params,
@@ -11,6 +37,18 @@ export default async function PodcastPage({
   const data = await getPodcastDetail(slug);
 
   if (!data) {
+    // Not in the curated catalog — try the open-index long tail (pi-{feedId}-…).
+    const longTail = await getLongTailPodcast(slug);
+    if (longTail?.kind === "redirect") redirect(longTail.href);
+    if (longTail?.kind === "page") {
+      return (
+        <>
+          <SiteHeader />
+          <IndexPodcastProfile data={longTail.data} />
+        </>
+      );
+    }
+
     return (
       <>
         <SiteHeader />
