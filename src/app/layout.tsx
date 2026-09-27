@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import Script from "next/script";
 import "./globals.css";
 
@@ -36,6 +37,14 @@ export default function RootLayout({
           strategy="beforeInteractive"
         />
         {children}
+        <footer className="border-t border-white/10">
+          <div className="mx-auto max-w-5xl px-6 sm:px-8 py-8 flex items-center justify-between gap-4 text-[13px] text-white/45">
+            <span>© PodBee</span>
+            <Link href="/privacy" className="hover:text-white">
+              Privacy Policy
+            </Link>
+          </div>
+        </footer>
       </body>
     </html>
   );
