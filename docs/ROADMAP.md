@@ -83,9 +83,13 @@ Checklist:
 - [x] Long-tail show/episode pages (`/podcasts/pi-{feedId}-…`), live from Podcast Index, cached
 - [x] Search + typeahead top up from the index when the catalog runs short (deduped by feed URL)
 - [x] Promotion redirect: ingested shows' long-tail URLs 307 to the catalog page
-- [ ] DevOps/Lukas: approve server-only `PODCAST_INDEX_*` env on Vercel (turns v1 on)
+- [x] Community ratings, reviews, and Listen List on every show + episode (long tail included)
+- [x] Episode lists sort by Newest / Oldest / Top rated / Lowest rated on every show page
+- [ ] Database: review + apply `20260927150000_long_tail_ratings.sql`
+- [ ] DevOps/Lukas: server-only env on Vercel (`PODCAST_INDEX_*`, `LONG_TAIL_SIGNING_SECRET`)
+      + the same signing secret in Supabase Vault
 - [ ] Watch Vercel usage (invocations, ISR reads/writes) for 2 weeks with long tail `noindex`
-- [ ] Phase 2 (needs Database): demand-driven promotion queue (`catalog_requests`) + nightly ingest
+- [ ] Pipeline: skip `pi-` long-tail rows in chart refresh; nightly promotion of most-rated shows
 
 ## Parked (do not build until Business Lead opens the bet)
 - [ ] AdSense banners — parked until Sprint 3 feels done

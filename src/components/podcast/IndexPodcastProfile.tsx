@@ -1,22 +1,46 @@
 import Link from "next/link";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { Cover } from "@/components/ui/Cover";
+import { StarRating } from "@/components/ui/StarRating";
 import { EpisodeList } from "@/components/podcast/EpisodeList";
 import { TitleSubnav } from "@/components/podcast/TitleSubnav";
+import { RatingWidget } from "@/components/rating/RatingWidget";
+import { ReviewsSection } from "@/components/rating/ReviewsSection";
+import { ListenListButton } from "@/components/listen-list/ListenListButton";
+import { rateLongTailPodcast, toggleLongTailListenListShow } from "@/app/actions/long-tail";
+import { getCurrentUser } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
+import { isInListenListShow } from "@/lib/listen-list";
+import { longTailRatingsEnabled, type LongTailPodcastDetail } from "@/lib/long-tail";
 import { indexEpisodeCards } from "@/lib/podcast-index";
-import type { LongTailPodcastDetail } from "@/lib/long-tail";
+import { getMyPodcastRating, getPodcastReviews } from "@/lib/ratings";
 
 /**
- * Long-tail show page — rendered live from the open Podcast Index, no
- * Supabase row. Ratings, cast, and Listen List need a catalog row, so they
- * appear once the show is promoted (the URL then redirects to the catalog page).
+ * Long-tail show page — metadata and episodes live from the open Podcast
+ * Index. Ratings, reviews, and Listen List work like on catalog shows: the
+ * first one creates the show's Supabase row (see app/actions/long-tail.ts).
  */
-export function IndexPodcastProfile({ data }: { data: LongTailPodcastDetail }) {
-  const { podcast, episodes } = data;
-  const cards = indexEpisodeCards(podcast, episodes);
+export async function IndexPodcastProfile({ data }: { data: LongTailPodcastDetail }) {
+  const { podcast, episodes, score, rated_episodes } = data;
+  const cards = indexEpisodeCards(podcast, episodes, rated_episodes);
   const total = Math.max(podcast.episode_count ?? 0, cards.length);
   const latest = formatDate(podcast.latest_published_at);
+  const ratingsOn = longTailRatingsEnabled();
+
+  const [current, reviews] = await Promise.all([
+    getCurrentUser(),
+    score ? getPodcastReviews(score.id) : Promise.resolve([]),
+  ]);
+  const [myRating, inListenList] =
+    current && score
+      ? await Promise.all([
+          getMyPodcastRating(current.id, score.id),
+          isInListenListShow(current.id, score.id),
+        ])
+      : [null, false];
+
+  const rateAction = rateLongTailPodcast.bind(null, podcast.feed_id);
+  const listenListAction = toggleLongTailListenListShow.bind(null, podcast.feed_id);
 
   const meta = [
     podcast.author,
@@ -28,6 +52,7 @@ export function IndexPodcastProfile({ data }: { data: LongTailPodcastDetail }) {
   const nav = [
     podcast.description ? { href: "#overview", label: "Overview" } : null,
     { href: "#episodes", label: "Episodes" },
+    reviews.length > 0 ? { href: "#reviews", label: "Reviews" } : null,
   ].filter((x): x is { href: string; label: string } => x != null);
 
   return (
@@ -49,6 +74,15 @@ export function IndexPodcastProfile({ data }: { data: LongTailPodcastDetail }) {
             <h1 className="mt-2 text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05]">
               {podcast.title}
             </h1>
+
+            <div className="mt-5">
+              <StarRating
+                average={score?.display_score ?? null}
+                count={score?.display_count ?? null}
+                size="lg"
+                empty="dash"
+              />
+            </div>
 
             {meta.length > 0 ? (
               <p className="mt-5 text-[15px] text-white/65 leading-snug">
@@ -80,8 +114,29 @@ export function IndexPodcastProfile({ data }: { data: LongTailPodcastDetail }) {
               </a>
             ) : null}
 
+            {ratingsOn ? (
+              <>
+                <div className="mt-6">
+                  <ListenListButton
+                    action={listenListAction}
+                    initialInList={inListenList}
+                    signedIn={current != null}
+                    label="Listen List"
+                  />
+                </div>
+                <div className="mt-6 max-w-xs">
+                  <RatingWidget
+                    action={rateAction}
+                    initialRating={myRating?.rating ?? null}
+                    initialReview={myRating?.review_text ?? null}
+                    signedIn={current != null}
+                  />
+                </div>
+              </>
+            ) : null}
+
             <p className="mt-6 max-w-sm text-[13px] leading-relaxed text-white/45">
-              From the open{" "}
+              Show details from the open{" "}
               <a
                 href="https://podcastindex.org"
                 target="_blank"
@@ -90,8 +145,7 @@ export function IndexPodcastProfile({ data }: { data: LongTailPodcastDetail }) {
               >
                 Podcast Index
               </a>
-              . Ratings, cast, and Listen List open when
-              this show joins the PodBee catalog.
+              .
             </p>
           </div>
         </header>
@@ -112,6 +166,8 @@ export function IndexPodcastProfile({ data }: { data: LongTailPodcastDetail }) {
         ) : null}
 
         <EpisodeList cards={cards} total={total} seasons={[]} />
+
+        <ReviewsSection id="reviews" reviews={reviews} />
       </div>
     </main>
   );

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { EpisodeCard } from "@/lib/types";
 import { Cover } from "@/components/ui/Cover";
+import { StarRating } from "@/components/ui/StarRating";
 import { formatDate, formatDuration } from "@/lib/format";
 
 export function EpisodeCardRow({ card }: { card: EpisodeCard }) {
@@ -13,6 +14,7 @@ export function EpisodeCardRow({ card }: { card: EpisodeCard }) {
   ]
     .filter(Boolean)
     .join(" · ");
+  const rated = (card.rating_count ?? 0) > 0 && card.avg_rating != null;
 
   return (
     <Link
@@ -28,6 +30,15 @@ export function EpisodeCardRow({ card }: { card: EpisodeCard }) {
           <p className="mt-1 text-[13px] text-white/55">{meta}</p>
         ) : null}
       </div>
+      {rated ? (
+        <div className="shrink-0">
+          <StarRating
+            average={Number(card.avg_rating)}
+            count={card.rating_count}
+            size="sm"
+          />
+        </div>
+      ) : null}
     </Link>
   );
 }

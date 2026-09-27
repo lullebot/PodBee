@@ -7,11 +7,15 @@ import {
   indexEpisodeSlug,
   indexPodcastSlug,
   isPiFeed,
+  LONG_TAIL_PAYLOAD_TTL_SECONDS,
+  longTailEpisodePayload,
+  longTailShowPayload,
   mergePodcastHits,
   normalizeFeedUrl,
   parseIndexEpisodeSlug,
   parseIndexPodcastSlug,
   podcastIndexAuthHeaders,
+  signLongTailPayload,
   slugifyTitle,
   toIndexEpisode,
   toIndexEpisodeSummary,
@@ -218,6 +222,28 @@ const tie = mergePodcastHits(
 );
 assert.equal(tie[0].source, "catalog");
 
+// A rated long-tail show (Supabase row, pi- slug) keeps its catalog slot and is filled from the index.
+const ratedStub = { ...catalogHit("Hardcore History", "https://b.example.com/rss"), slug: "pi-4-hardcore-history", episode_count: null };
+const filled = mergePodcastHits(
+  [ratedStub],
+  [{ ...longTailHit(4, "Hardcore History", "http://b.example.com/rss/"), episode_count: 74, genre_name: "History", network_name: "Dan Carlin" }],
+  "hardcore history",
+  12
+);
+assert.equal(filled.length, 1);
+assert.equal(filled[0].slug, "pi-4-hardcore-history");
+assert.equal(filled[0].episode_count, 74);
+assert.equal(filled[0].genre_name, "History");
+assert.equal(ratedStub.episode_count, null); // input not mutated
+// A real catalog show is never overwritten by index data.
+const catalogKept = mergePodcastHits(
+  [{ ...serial, genre_name: null }],
+  [{ ...longTailHit(1, "Serial", "https://feeds.serialpodcast.org/serial"), genre_name: "News" }],
+  "serial",
+  12
+);
+assert.equal(catalogKept[0].genre_name, null);
+
 // Duplicate long-tail ids collapse; limit is respected.
 assert.equal(
   mergePodcastHits([], [longTailHit(6, "A", "https://e.example.com/1"), longTailHit(6, "A", "https://e.example.com/1")], "a", 12).length,
@@ -231,6 +257,79 @@ assert.equal(
     5
   ).length,
   5
+);
+
+// --- rated episodes merge into the live list ------------------------------
+
+const rated = [
+  {
+    podcast_index_id: 42, // also in the live list → score attached, no duplicate
+    slug: "42-show-70-twilight-of-the-aesir",
+    title: "Show 70",
+    published_at: null,
+    duration_seconds: null,
+    episode_type: "full" as const,
+    cover_image_url: null,
+    avg_rating: 8.5,
+    rating_count: 2,
+  },
+  {
+    podcast_index_id: 7, // older than the live list → appended so "Top rated" sees it
+    slug: "7-show-1-the-beginning",
+    title: "Show 1 – The Beginning",
+    published_at: "2006-01-01T00:00:00.000Z",
+    duration_seconds: 3600,
+    episode_type: "full" as const,
+    cover_image_url: "https://example.com/art.jpg",
+    avg_rating: 9,
+    rating_count: 1,
+  },
+  {
+    podcast_index_id: 8, // listed but never rated → no score shown
+    slug: "8-show-2",
+    title: "Show 2",
+    published_at: null,
+    duration_seconds: null,
+    episode_type: "full" as const,
+    cover_image_url: null,
+    avg_rating: 0,
+    rating_count: 0,
+  },
+];
+const merged2 = indexEpisodeCards(podcast, [summary], rated);
+assert.equal(merged2.length, 3);
+assert.equal(merged2[0].avg_rating, 8.5);
+assert.equal(merged2[0].rating_count, 2);
+assert.equal(merged2[1].episode_slug, "7-show-1-the-beginning");
+assert.equal(merged2[1].avg_rating, 9);
+assert.equal(merged2[1].episode_cover_url, null); // same as show cover
+assert.equal(merged2[2].avg_rating, null);
+assert.equal(indexEpisodeCards(podcast, [summary])[0].avg_rating, null);
+
+// --- signed payloads (verified by the DB with pgcrypto) ----------------------
+
+const showPayload = longTailShowPayload(podcast);
+assert.equal(showPayload.feed_id, 920666);
+assert.equal(showPayload.slug, podcast.slug);
+assert.equal(showPayload.rss_url, "https://feeds.feedburner.com/dancarlin/history?format=xml");
+const epPayload = longTailEpisodePayload(episode);
+assert.equal(epPayload.episode_id, 42);
+assert.equal(epPayload.slug, "42-show-70");
+assert.equal(epPayload.audio_url, "https://cdn.example.com/70.mp3");
+
+const signed = signLongTailPayload({ kind: "podcast", show: showPayload }, "s".repeat(32), 1700000000);
+const parsed = JSON.parse(signed.payload);
+assert.equal(parsed.kind, "podcast");
+assert.equal(parsed.exp, 1700000000 + LONG_TAIL_PAYLOAD_TTL_SECONDS);
+assert.match(signed.signature, /^[0-9a-f]{64}$/);
+// Deterministic for the same input; any change to the payload changes the signature.
+assert.equal(
+  signLongTailPayload({ kind: "podcast", show: showPayload }, "s".repeat(32), 1700000000).signature,
+  signed.signature
+);
+assert.notEqual(
+  signLongTailPayload({ kind: "podcast", show: { ...showPayload, title: "x" } }, "s".repeat(32), 1700000000).signature,
+  signed.signature
 );
 
 console.log("podcast-index tests passed");

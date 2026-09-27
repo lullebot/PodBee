@@ -34,21 +34,22 @@ export default async function PodcastPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  // pi-{feedId} slugs render live from the open index first; a Supabase row
+  // for them (created by the first rating/Listen List add) only holds ratings.
+  const longTail = await getLongTailPodcast(slug);
+  if (longTail?.kind === "redirect") redirect(longTail.href);
+  if (longTail?.kind === "page") {
+    return (
+      <>
+        <SiteHeader />
+        <IndexPodcastProfile data={longTail.data} />
+      </>
+    );
+  }
+
   const data = await getPodcastDetail(slug);
 
   if (!data) {
-    // Not in the curated catalog — try the open-index long tail (pi-{feedId}-…).
-    const longTail = await getLongTailPodcast(slug);
-    if (longTail?.kind === "redirect") redirect(longTail.href);
-    if (longTail?.kind === "page") {
-      return (
-        <>
-          <SiteHeader />
-          <IndexPodcastProfile data={longTail.data} />
-        </>
-      );
-    }
-
     return (
       <>
         <SiteHeader />

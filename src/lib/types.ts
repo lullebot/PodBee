@@ -212,6 +212,9 @@ export interface EpisodeCard {
   podcast_cover_url: string | null;
   season_number: number | null;
   season_title: string | null;
+  /** Crowd score (null until the episode has at least one rating). */
+  avg_rating?: number | null;
+  rating_count?: number;
 }
 
 export interface SimilarPodcast {

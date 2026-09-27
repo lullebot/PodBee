@@ -3,6 +3,12 @@
 import { useState } from "react";
 import type { EpisodeCard, Season } from "@/lib/types";
 import { TITLE_EPISODE_PREVIEW } from "@/lib/title-cast";
+import {
+  EPISODE_SORTS,
+  hasRatedEpisodes,
+  sortEpisodeCards,
+  type EpisodeSort,
+} from "@/lib/episode-sort";
 import { Card } from "@/components/ui/Card";
 import { EpisodeCardRow } from "@/components/podcast/EpisodeCardRow";
 
@@ -16,15 +22,17 @@ export function EpisodeList({
   seasons: Season[];
 }) {
   const [season, setSeason] = useState<number | "all">("all");
+  const [sort, setSort] = useState<EpisodeSort>("newest");
   const [expanded, setExpanded] = useState(false);
   const seasonNums = [
     ...new Set(seasons.map((s) => s.number).filter((n) => Number.isFinite(n))),
   ].sort((a, b) => a - b);
   const showChips = seasonNums.length > 0;
-  const filtered =
-    season === "all"
-      ? cards
-      : cards.filter((c) => c.season_number === season);
+  const filtered = sortEpisodeCards(
+    season === "all" ? cards : cards.filter((c) => c.season_number === season),
+    sort
+  );
+  const ratingSort = sort === "top" || sort === "lowest";
   const catalogTotal = season === "all" ? total : filtered.length;
   const more = !expanded && filtered.length > TITLE_EPISODE_PREVIEW;
   const visible = more
@@ -40,9 +48,31 @@ export function EpisodeList({
         </span>
       </div>
 
+      {cards.length > 1 ? (
+        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Sort episodes">
+          {EPISODE_SORTS.map((option) => (
+            <Chip
+              key={option.id}
+              label={option.label}
+              active={sort === option.id}
+              onClick={() => {
+                setSort(option.id);
+                setExpanded(false);
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {ratingSort && !hasRatedEpisodes(filtered) ? (
+        <p className="mt-3 text-[13px] text-white/45">
+          No episode ratings yet — open an episode to rate it.
+        </p>
+      ) : null}
+
       {showChips ? (
-        <div className="mt-4 flex flex-wrap gap-2">
-          <SeasonChip
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Chip
             label="All"
             active={season === "all"}
             onClick={() => {
@@ -51,7 +81,7 @@ export function EpisodeList({
             }}
           />
           {seasonNums.map((n) => (
-            <SeasonChip
+            <Chip
               key={n}
               label={`S${n}`}
               active={season === n}
@@ -88,7 +118,7 @@ export function EpisodeList({
   );
 }
 
-function SeasonChip({
+function Chip({
   label,
   active,
   onClick,

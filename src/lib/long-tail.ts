@@ -32,6 +32,7 @@ import {
   type IndexEpisodeSummary,
   type IndexPodcast,
   type PiEpisode,
+  type RatedIndexEpisode,
 } from "@/lib/podcast-index";
 
 /** Overridable for local mocks/tests only. */
@@ -41,7 +42,9 @@ const USER_AGENT = "PodBee/1.0 (+https://podbee.vercel.app; structured podcast d
 const TIMEOUT_MS = 4000;
 const SEARCH_MIN_CHARS = 3; // 2-char typeahead prefixes return noise and burn API calls
 const SEARCH_MAX = 20;
-const EPISODES_MAX = 25; // ≈5 KB trimmed → one 8 KB cache unit; matches the catalog page preview
+// Deep enough that "Oldest" / "Top rated" cover the whole back catalog of most
+// shows (~60 KB trimmed per cache entry; fine at PodBee's traffic).
+const EPISODES_MAX = 300;
 const CACHE_TAG = "podcast-index";
 
 /** Seconds. Long enough that bots and repeat views cost cache reads, not API calls. */
@@ -57,6 +60,17 @@ function credentials(): { key: string; secret: string } | null {
 
 export function longTailEnabled(): boolean {
   return credentials() != null;
+}
+
+/** HMAC secret shared with Supabase Vault — signs long-tail row payloads. */
+export function longTailSigningSecret(): string | null {
+  const secret = process.env.LONG_TAIL_SIGNING_SECRET?.trim();
+  return secret && secret.length >= 32 ? secret : null;
+}
+
+/** Ratings/reviews/Listen List on long-tail pages (needs PI + the signing secret). */
+export function longTailRatingsEnabled(): boolean {
+  return longTailEnabled() && longTailSigningSecret() != null;
 }
 
 /**
@@ -181,17 +195,75 @@ const loadEpisode = cache(async (episodeId: number): Promise<IndexEpisode | null
   }
 });
 
-/** Catalog slug for a feed that has since been promoted into Supabase. */
-async function findCatalogSlug(feedUrls: string[]): Promise<{ id: string; slug: string } | null> {
+function isLongTailRow(slug: string): boolean {
+  return parseIndexPodcastSlug(slug) != null;
+}
+
+/**
+ * Supabase row for a feed: either a promoted catalog show (pipeline slug) or
+ * the long-tail row created when someone first rated/listed it (pi- slug).
+ */
+async function findPodcastRow(
+  feedId: number,
+  feedUrls: string[]
+): Promise<{ id: string; slug: string } | null> {
+  // Errors (e.g. podcast_index_id not migrated yet) fall through to the URL match.
+  const byId = await supabase
+    .from("podcasts")
+    .select("id, slug")
+    .eq("podcast_index_id", feedId)
+    .limit(1)
+    .maybeSingle();
+  if (!byId.error && byId.data) return byId.data as { id: string; slug: string };
+
   const variants = feedUrlVariants(feedUrls);
   if (variants.length === 0) return null;
   const { data } = await supabase
     .from("podcasts")
     .select("id, slug")
     .in("rss_url", variants)
-    .limit(1)
+    .limit(5);
+  const rows = (data ?? []) as Array<{ id: string; slug: string }>;
+  // A pipeline catalog row wins over a long-tail row for the same feed.
+  return rows.find((r) => !isLongTailRow(r.slug)) ?? rows[0] ?? null;
+}
+
+export type LongTailShowScore = {
+  id: string;
+  display_score: number | null;
+  display_count: number | null;
+};
+
+async function loadShowScore(podcastId: string): Promise<LongTailShowScore | null> {
+  const { data } = await supabase
+    .from("podcasts_display")
+    .select("id, display_score, display_count")
+    .eq("id", podcastId)
     .maybeSingle();
-  return (data as { id: string; slug: string } | null) ?? null;
+  if (!data) return null;
+  const row = data as { id: string; display_score: number | string | null; display_count: number | null };
+  return {
+    id: row.id,
+    display_score: row.display_score == null ? null : Number(row.display_score),
+    display_count: row.display_count,
+  };
+}
+
+async function loadRatedEpisodes(podcastId: string): Promise<RatedIndexEpisode[]> {
+  const { data, error } = await supabase
+    .from("episodes")
+    .select(
+      "podcast_index_id, slug, title, published_at, duration_seconds, episode_type, cover_image_url, avg_rating, rating_count"
+    )
+    .eq("podcast_id", podcastId)
+    .not("podcast_index_id", "is", null)
+    .limit(1000);
+  if (error || !data) return [];
+  return (data as Array<RatedIndexEpisode & { avg_rating: number | string | null }>).map((row) => ({
+    ...row,
+    podcast_index_id: row.podcast_index_id == null ? null : Number(row.podcast_index_id),
+    avg_rating: row.avg_rating == null ? null : Number(row.avg_rating),
+  }));
 }
 
 export type LongTailResult<T> =
@@ -202,11 +274,23 @@ export type LongTailResult<T> =
 export type LongTailPodcastDetail = {
   podcast: IndexPodcast;
   episodes: IndexEpisodeSummary[];
+  /** Supabase row + crowd score once someone has rated or listed the show. */
+  score: LongTailShowScore | null;
+  /** Episodes of this show that have Supabase rows (rated or listed). */
+  rated_episodes: RatedIndexEpisode[];
+};
+
+export type LongTailEpisodeScore = {
+  id: string;
+  avg_rating: number | null;
+  rating_count: number;
 };
 
 export type LongTailEpisodeDetail = {
   podcast: IndexPodcast;
   episode: IndexEpisode;
+  /** Supabase row + crowd score once someone has rated or listed the episode. */
+  score: LongTailEpisodeScore | null;
 };
 
 /** Title (for metadata) of a long-tail show slug; shares the page's cached read. */
@@ -215,9 +299,24 @@ export async function getLongTailPodcastTitle(slug: string): Promise<string | nu
   return feedId ? ((await loadFeed(feedId))?.title ?? null) : null;
 }
 
+/** Live Podcast Index data for server actions (same cached reads as the pages). */
+export async function loadLongTailPodcast(feedId: number): Promise<IndexPodcast | null> {
+  return loadFeed(feedId);
+}
+
+export async function loadLongTailEpisode(
+  feedId: number,
+  episodeId: number
+): Promise<{ podcast: IndexPodcast; episode: IndexEpisode } | null> {
+  const [podcast, episode] = await Promise.all([loadFeed(feedId), loadEpisode(episodeId)]);
+  if (!podcast || !episode || episode.feed_id !== feedId) return null;
+  return { podcast, episode };
+}
+
 /**
- * Resolve `/podcasts/{slug}` when the slug isn't a catalog show:
- * promoted feed → catalog page; wrong title in slug → canonical slug; else live page.
+ * Resolve `/podcasts/{slug}` for a pi- slug:
+ * promoted feed → catalog page; wrong title in slug → canonical slug; else live page
+ * (with crowd ratings from the long-tail row, if one exists).
  */
 export async function getLongTailPodcast(
   slug: string
@@ -227,14 +326,20 @@ export async function getLongTailPodcast(
   const podcast = await loadFeed(feedId);
   if (!podcast) return null;
 
-  const promoted = await findCatalogSlug(podcast.feed_urls);
-  if (promoted) return { kind: "redirect", href: `/podcasts/${promoted.slug}` };
+  const row = await findPodcastRow(feedId, podcast.feed_urls);
+  if (row && !isLongTailRow(row.slug)) {
+    return { kind: "redirect", href: `/podcasts/${row.slug}` };
+  }
   if (slug !== podcast.slug) {
     return { kind: "redirect", href: `/podcasts/${podcast.slug}` };
   }
 
-  const episodes = await loadFeedEpisodes(podcast);
-  return { kind: "page", data: { podcast, episodes } };
+  const [episodes, score, rated_episodes] = await Promise.all([
+    loadFeedEpisodes(podcast),
+    row ? loadShowScore(row.id) : Promise.resolve(null),
+    row ? loadRatedEpisodes(row.id) : Promise.resolve([]),
+  ]);
+  return { kind: "page", data: { podcast, episodes, score, rated_episodes } };
 }
 
 export async function getLongTailEpisodeTitle(
@@ -248,7 +353,21 @@ export async function getLongTailEpisodeTitle(
   return episode?.feed_id === feedId ? episode.title : null;
 }
 
-/** Resolve `/podcasts/{showSlug}/{episodeSlug}` for a long-tail show. */
+async function findEpisodeRow(
+  episodeId: number
+): Promise<{ id: string; slug: string; podcast_id: string; avg_rating: number | null; rating_count: number } | null> {
+  const { data, error } = await supabase
+    .from("episodes")
+    .select("id, slug, podcast_id, avg_rating, rating_count")
+    .eq("podcast_index_id", episodeId)
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as { id: string; slug: string; podcast_id: string; avg_rating: number | string | null; rating_count: number };
+  return { ...row, avg_rating: row.avg_rating == null ? null : Number(row.avg_rating) };
+}
+
+/** Resolve `/podcasts/{showSlug}/{episodeSlug}` for a pi- show slug. */
 export async function getLongTailEpisode(
   showSlug: string,
   episodeSlug: string
@@ -257,24 +376,31 @@ export async function getLongTailEpisode(
   const episodeId = parseIndexEpisodeSlug(episodeSlug);
   if (!feedId || !episodeId) return null;
 
-  const [podcast, episode] = await Promise.all([loadFeed(feedId), loadEpisode(episodeId)]);
-  if (!podcast || !episode || episode.feed_id !== feedId) return null;
+  const loaded = await loadLongTailEpisode(feedId, episodeId);
+  if (!loaded) return null;
+  const { podcast, episode } = loaded;
 
-  const promoted = await findCatalogSlug(podcast.feed_urls);
-  if (promoted) {
-    const match = episode.enclosure_url
-      ? await supabase
-          .from("episodes")
-          .select("slug")
-          .eq("podcast_id", promoted.id)
-          .eq("audio_url", episode.enclosure_url)
-          .limit(1)
-          .maybeSingle()
-      : { data: null };
-    const epSlug = (match.data as { slug?: string } | null)?.slug;
+  const [row, epRow] = await Promise.all([
+    findPodcastRow(feedId, podcast.feed_urls),
+    findEpisodeRow(episodeId),
+  ]);
+
+  if (row && !isLongTailRow(row.slug)) {
+    // Promoted: land on the catalog episode (by PI id, else enclosure URL), else the show.
+    let epSlug = epRow?.podcast_id === row.id ? epRow.slug : null;
+    if (!epSlug && episode.enclosure_url) {
+      const { data } = await supabase
+        .from("episodes")
+        .select("slug")
+        .eq("podcast_id", row.id)
+        .eq("audio_url", episode.enclosure_url)
+        .limit(1)
+        .maybeSingle();
+      epSlug = (data as { slug?: string } | null)?.slug ?? null;
+    }
     return {
       kind: "redirect",
-      href: epSlug ? `/podcasts/${promoted.slug}/${epSlug}` : `/podcasts/${promoted.slug}`,
+      href: epSlug ? `/podcasts/${row.slug}/${epSlug}` : `/podcasts/${row.slug}`,
     };
   }
 
@@ -284,5 +410,8 @@ export async function getLongTailEpisode(
     return { kind: "redirect", href: `/podcasts/${canonicalShow}/${canonicalEpisode}` };
   }
 
-  return { kind: "page", data: { podcast, episode } };
+  const score = epRow
+    ? { id: epRow.id, avg_rating: epRow.avg_rating, rating_count: epRow.rating_count }
+    : null;
+  return { kind: "page", data: { podcast, episode, score } };
 }

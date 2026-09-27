@@ -280,6 +280,7 @@ export async function getPodcastDetail(
     { data: cards, count: episodeCount },
     { data: genreRows },
     credits,
+    { data: ratedEpisodes },
   ] = await Promise.all([
     p.primary_company_id
       ? supabase
@@ -303,10 +304,29 @@ export async function getPodcastDetail(
       .select("is_primary, genre_id, genres(id, slug, name)")
       .eq("podcast_id", p.id),
     loadTitleCast(p.id, p.title),
+    // Crowd scores for the episode list's Top rated / Lowest rated sorts.
+    supabase
+      .from("episodes")
+      .select("id, avg_rating, rating_count")
+      .eq("podcast_id", p.id)
+      .gt("rating_count", 0),
   ]);
 
   const seasonList = (seasons as Season[]) ?? [];
-  const episode_cards = (cards ?? []) as EpisodeCard[];
+  const scores = new Map<string, { avg_rating: number; rating_count: number }>();
+  for (const row of (ratedEpisodes ?? []) as Array<{
+    id: string;
+    avg_rating: number;
+    rating_count: number;
+  }>) {
+    scores.set(row.id, row);
+  }
+  const episode_cards = ((cards ?? []) as EpisodeCard[]).map((card) => {
+    const score = scores.get(card.id);
+    return score
+      ? { ...card, avg_rating: Number(score.avg_rating), rating_count: score.rating_count }
+      : card;
+  });
 
   const genres: Genre[] = [];
   const genreIds: string[] = [];

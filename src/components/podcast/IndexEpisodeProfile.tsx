@@ -1,13 +1,22 @@
 import Link from "next/link";
 import { Cover } from "@/components/ui/Cover";
+import { StarRating } from "@/components/ui/StarRating";
+import { RatingWidget } from "@/components/rating/RatingWidget";
+import { ReviewsSection } from "@/components/rating/ReviewsSection";
+import { ListenListButton } from "@/components/listen-list/ListenListButton";
+import { rateLongTailEpisode, toggleLongTailListenListEpisode } from "@/app/actions/long-tail";
+import { getCurrentUser } from "@/lib/auth";
 import { formatDate, formatDuration } from "@/lib/format";
-import type { LongTailEpisodeDetail } from "@/lib/long-tail";
+import { isInListenListEpisode } from "@/lib/listen-list";
+import { longTailRatingsEnabled, type LongTailEpisodeDetail } from "@/lib/long-tail";
+import { getEpisodeReviews, getMyEpisodeRating } from "@/lib/ratings";
 
-/** Long-tail episode page — metadata only from the open Podcast Index. Not a player. */
-export function IndexEpisodeProfile({ data }: { data: LongTailEpisodeDetail }) {
-  const { podcast, episode } = data;
+/** Long-tail episode page — metadata from the open Podcast Index, crowd ratings from Supabase. Not a player. */
+export async function IndexEpisodeProfile({ data }: { data: LongTailEpisodeDetail }) {
+  const { podcast, episode, score } = data;
   const cover = episode.cover_image_url ?? podcast.cover_image_url;
   const showHref = `/podcasts/${podcast.slug}`;
+  const ratingsOn = longTailRatingsEnabled();
   const meta = [
     episode.season_number != null ? `S${episode.season_number}` : null,
     episode.episode_number != null ? `E${episode.episode_number}` : null,
@@ -15,6 +24,25 @@ export function IndexEpisodeProfile({ data }: { data: LongTailEpisodeDetail }) {
     formatDate(episode.published_at),
     episode.explicit ? "Explicit" : null,
   ].filter(Boolean);
+
+  const [current, reviews] = await Promise.all([
+    getCurrentUser(),
+    score ? getEpisodeReviews(score.id) : Promise.resolve([]),
+  ]);
+  const [myRating, inListenList] =
+    current && score
+      ? await Promise.all([
+          getMyEpisodeRating(current.id, score.id),
+          isInListenListEpisode(current.id, score.id),
+        ])
+      : [null, false];
+
+  const rateAction = rateLongTailEpisode.bind(null, podcast.feed_id, episode.id);
+  const listenListAction = toggleLongTailListenListEpisode.bind(
+    null,
+    podcast.feed_id,
+    episode.id
+  );
 
   return (
     <main className="min-h-screen bg-[#0B1C2C] text-white">
@@ -45,8 +73,39 @@ export function IndexEpisodeProfile({ data }: { data: LongTailEpisodeDetail }) {
                 {meta.join(" · ")}
               </p>
             ) : null}
+
+            <div className="mt-5">
+              <StarRating
+                average={score && score.rating_count > 0 ? score.avg_rating : null}
+                count={score?.rating_count ?? 0}
+                size="lg"
+                empty="dash"
+              />
+            </div>
+
+            {ratingsOn ? (
+              <>
+                <div className="mt-6">
+                  <ListenListButton
+                    action={listenListAction}
+                    initialInList={inListenList}
+                    signedIn={current != null}
+                    label="Listen List"
+                  />
+                </div>
+                <div className="mt-6 max-w-xs">
+                  <RatingWidget
+                    action={rateAction}
+                    initialRating={myRating?.rating ?? null}
+                    initialReview={myRating?.review_text ?? null}
+                    signedIn={current != null}
+                  />
+                </div>
+              </>
+            ) : null}
+
             <p className="mt-6 max-w-sm text-[13px] leading-relaxed text-white/45">
-              From the open{" "}
+              Episode details from the open{" "}
               <a
                 href="https://podcastindex.org"
                 target="_blank"
@@ -55,8 +114,7 @@ export function IndexEpisodeProfile({ data }: { data: LongTailEpisodeDetail }) {
               >
                 Podcast Index
               </a>
-              . Ratings and reviews open when
-              this show joins the PodBee catalog.
+              .
             </p>
           </div>
         </header>
@@ -69,6 +127,8 @@ export function IndexEpisodeProfile({ data }: { data: LongTailEpisodeDetail }) {
             </p>
           </section>
         ) : null}
+
+        <ReviewsSection id="reviews" reviews={reviews} />
       </div>
     </main>
   );

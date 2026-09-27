@@ -99,9 +99,12 @@ Supabase dashboard's SQL editor against a project's `SUPABASE_ACCESS_TOKEN`.
 The curated catalog lives in Supabase (capped for the free tier). Every other show in the open
 Podcast Index (~4.7M feeds) is still searchable and gets a page: search tops up from the Podcast
 Index API when the catalog runs short, and `/podcasts/pi-{feedId}-{title}` pages render live and
-cached. Nothing is written to Supabase, and once the pipeline ingests a show, its long-tail URL
-redirects to the catalog page. Off unless `PODCAST_INDEX_API_KEY`/`PODCAST_INDEX_API_SECRET` are
-set server-side (never `NEXT_PUBLIC_*`). Design, free-tier math, and next phases:
+cached. Ratings, reviews, and Listen List work on every show and episode: the first one creates
+a small Supabase row for that show (signed server-side, see the `20260927150000_long_tail_ratings`
+migration). Once the pipeline ingests a show, its long-tail URL redirects to the catalog page and
+its ratings move with it. Every show's episode list sorts by Newest / Oldest / Top rated / Lowest
+rated. Off unless `PODCAST_INDEX_API_KEY`/`PODCAST_INDEX_API_SECRET` (and, for ratings,
+`LONG_TAIL_SIGNING_SECRET`) are set server-side (never `NEXT_PUBLIC_*`). Design, free-tier math, and next phases:
 [`docs/FULL_CATALOG.md`](docs/FULL_CATALOG.md).
 
 ## Design law
