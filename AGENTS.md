@@ -9,6 +9,10 @@ podcasts, not a media player.** Apple-like design; see "Design law" in
 - Next.js App Router + TypeScript + Tailwind, deployed on **Vercel Hobby**
 - Supabase (free tier) — the app uses the **anon key only**
   (`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
+- Long-tail catalog: the app may read the Podcast Index API server-side
+  (`PODCAST_INDEX_API_KEY` / `PODCAST_INDEX_API_SECRET`, never `NEXT_PUBLIC_*`)
+  for per-visitor lookups only — never copy the index into Supabase. See
+  [`docs/FULL_CATALOG.md`](docs/FULL_CATALOG.md)
 - `pipeline/` (Python) is the only place that holds `SUPABASE_SERVICE_ROLE_KEY`,
   set locally/in CI secrets — never on Vercel, never in `NEXT_PUBLIC_*`
 
@@ -33,6 +37,8 @@ podcasts, not a media player.** Apple-like design; see "Design law" in
   than relying on a one-off handoff message.
 - [`pipeline/README.md`](pipeline/README.md) — ingest flags, env vars,
   free-tier ops caps.
+- [`docs/FULL_CATALOG.md`](docs/FULL_CATALOG.md) — how the full catalog is
+  served without storing it (long tail, caching, promotion).
 - [`supabase/migrations/`](supabase/migrations/) — schema history, applied in
   order. Add new schema changes as a new migration file; don't hand-edit the
   live database outside of one.

@@ -1,4 +1,6 @@
 import { supabase } from "@/lib/supabase";
+import { searchLongTailPodcasts } from "@/lib/long-tail";
+import { mergePodcastHits } from "@/lib/podcast-index";
 import {
   POPULAR_MIX_LIMIT,
   isHostRole,
@@ -31,7 +33,7 @@ export {
 
 const PERSON_COLS = "id, slug, display_name, image_url";
 const PODCAST_COLS =
-  "id, slug, title, cover_image_url, rating_average, primary_company_id";
+  "id, slug, title, cover_image_url, rating_average, primary_company_id, rss_url";
 
 type PersonRow = {
   id: string;
@@ -47,6 +49,7 @@ type PodcastRow = {
   cover_image_url: string | null;
   rating_average: number | string | null;
   primary_company_id?: string | null;
+  rss_url?: string | null;
 };
 
 type NestedPodcast = {
@@ -514,6 +517,8 @@ async function densifyPodcasts(rows: PodcastRow[]): Promise<PodcastSearchHit[]> 
     network_name: p.primary_company_id
       ? companyName.get(p.primary_company_id) ?? null
       : null,
+    feed_urls: p.rss_url ? [p.rss_url] : [],
+    source: "catalog" as const,
   }));
 }
 
@@ -567,12 +572,28 @@ export async function searchPodcasts(
   return rankPodcasts(densified, sanitized).slice(0, limit);
 }
 
+/**
+ * Catalog podcasts, topped up from the open Podcast Index long tail when the
+ * catalog alone can't fill the list (so popular queries cost no API call).
+ */
+export async function searchAllPodcasts(
+  term: string,
+  limit = 12
+): Promise<PodcastSearchHit[]> {
+  const sanitized = sanitizeTerm(term);
+  if (sanitized.length < 2) return [];
+  const catalog = await searchPodcasts(sanitized, limit);
+  if (catalog.length >= limit) return catalog;
+  const longTail = await searchLongTailPodcasts(sanitized);
+  return mergePodcastHits(catalog, longTail, sanitized, limit);
+}
+
 export async function searchCatalog(q: string): Promise<SearchHit[]> {
   const term = sanitizeTerm(q);
   if (term.length < 2) return [];
 
   const [podcasts, people, rawEpisodes] = await Promise.all([
-    searchPodcasts(term, 12),
+    searchAllPodcasts(term, 12),
     searchPeople(term, 8),
     collectEpisodeAppearances(term),
   ]);

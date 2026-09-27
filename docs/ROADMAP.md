@@ -69,6 +69,18 @@ separate curated-chart system, per AGENTS.md. The placeholder score this sprint'
 replaces on show pages is `podcasts.rating_average`/`rating_count` (pipeline-seeded from RSS/iTunes),
 not `podbee_score`.
 
+## Full catalog via long tail (proposed — v1 built, off until env is set)
+**Goal:** every one of ~4.7M Podcast Index shows is searchable and has a page, at $0 and 0 MB of
+Supabase growth. Design + math: [`docs/FULL_CATALOG.md`](FULL_CATALOG.md).
+
+Checklist:
+- [x] Long-tail show/episode pages (`/podcasts/pi-{feedId}-…`), live from Podcast Index, cached
+- [x] Search + typeahead top up from the index when the catalog runs short (deduped by feed URL)
+- [x] Promotion redirect: ingested shows' long-tail URLs 307 to the catalog page
+- [ ] DevOps/Lukas: approve server-only `PODCAST_INDEX_*` env on Vercel (turns v1 on)
+- [ ] Watch Vercel usage (invocations, ISR reads/writes) for 2 weeks with long tail `noindex`
+- [ ] Phase 2 (needs Database): demand-driven promotion queue (`catalog_requests`) + nightly ingest
+
 ## Parked (do not build until Business Lead opens the bet)
 - [ ] AdSense banners — parked until Sprint 3 feels done
 - [ ] Similar-taste recommendations from ratings
