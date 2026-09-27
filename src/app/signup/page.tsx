@@ -35,6 +35,13 @@ export default async function SignupPage({
               Sign in
             </Link>
           </p>
+          <p className="mt-3 text-[12px] text-white/40">
+            See our{" "}
+            <Link href="/privacy" className="underline hover:text-white/70">
+              Privacy Policy
+            </Link>{" "}
+            for how we handle your data.
+          </p>
         </Card>
       </main>
     </>
