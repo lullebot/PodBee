@@ -9,7 +9,8 @@ export function ListenListButton({
   signedIn,
   label = "Listen List",
 }: {
-  action: (wasInList: boolean) => Promise<void>;
+  /** May resolve to `{ error }` — thrown errors are masked in production builds. */
+  action: (wasInList: boolean) => Promise<void | { error: string }>;
   initialInList: boolean;
   signedIn: boolean;
   label?: string;
@@ -35,10 +36,14 @@ export function ListenListButton({
     setError(null);
     startTransition(async () => {
       try {
-        await action(wasInList);
-      } catch (e) {
+        const result = await action(wasInList);
+        if (result?.error) {
+          setInList(wasInList);
+          setError(result.error);
+        }
+      } catch {
         setInList(wasInList);
-        setError(e instanceof Error ? e.message : "Could not update your Listen List.");
+        setError("Could not update your Listen List — please try again.");
       }
     });
   }

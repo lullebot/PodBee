@@ -2,13 +2,9 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { EpisodeProfile } from "@/components/podcast/EpisodeProfile";
-import { IndexEpisodeProfile } from "@/components/podcast/IndexEpisodeProfile";
-import {
-  getLongTailEpisode,
-  getLongTailEpisodeTitle,
-  longTailIndexable,
-} from "@/lib/long-tail";
-import { parseIndexPodcastSlug } from "@/lib/podcast-index";
+import { FeedEpisodeProfile } from "@/components/podcast/FeedEpisodeProfile";
+import { parseFeedEpisodeSlug } from "@/lib/feed-episodes";
+import { getFeedEpisodePage, getFeedEpisodeTitle, longTailIndexable } from "@/lib/long-tail";
 import { getEpisodeDetail } from "@/lib/queries";
 
 export async function generateMetadata({
@@ -17,11 +13,13 @@ export async function generateMetadata({
   params: Promise<{ slug: string; episodeSlug: string }>;
 }): Promise<Metadata> {
   const { slug, episodeSlug } = await params;
-  if (parseIndexPodcastSlug(slug) == null) return {};
-  const title = await getLongTailEpisodeTitle(slug, episodeSlug);
+  if (parseFeedEpisodeSlug(episodeSlug) == null) return {};
+  const title = await getFeedEpisodeTitle(slug, episodeSlug);
   if (!title) return {};
   return {
     title: `${title} — PodBee`,
+    // Feed episodes span millions of shows × thousands of episodes — keep
+    // crawlers off them by default (same switch as long-tail show pages).
     robots: longTailIndexable()
       ? undefined
       : { index: false, follow: true, googleBot: { index: false, follow: true } },
@@ -34,21 +32,22 @@ export default async function EpisodePage({
   params: Promise<{ slug: string; episodeSlug: string }>;
 }) {
   const { slug, episodeSlug } = await params;
+  // e-{key} episodes come from the show's RSS feed (any show); the rest are
+  // full catalog rows.
+  const feedEpisode = await getFeedEpisodePage(slug, episodeSlug);
+  if (feedEpisode?.kind === "redirect") redirect(feedEpisode.href);
+  if (feedEpisode?.kind === "page") {
+    return (
+      <>
+        <SiteHeader />
+        <FeedEpisodeProfile data={feedEpisode.data} />
+      </>
+    );
+  }
+
   const data = await getEpisodeDetail(slug, episodeSlug);
 
   if (!data) {
-    // Not in the curated catalog — try the open-index long tail.
-    const longTail = await getLongTailEpisode(slug, episodeSlug);
-    if (longTail?.kind === "redirect") redirect(longTail.href);
-    if (longTail?.kind === "page") {
-      return (
-        <>
-          <SiteHeader />
-          <IndexEpisodeProfile data={longTail.data} />
-        </>
-      );
-    }
-
     return (
       <>
         <SiteHeader />

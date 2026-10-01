@@ -10,18 +10,15 @@
  * Design + free-tier math: docs/FULL_CATALOG.md
  */
 
-import { createHash } from "node:crypto";
-import type { EpisodeCard, EpisodeType } from "@/lib/types";
+import { createHash, createHmac } from "node:crypto";
+import type { FeedEpisodePayload } from "@/lib/feed-episodes";
 import { searchNameRank, type PodcastSearchHit } from "@/lib/search-hits";
 
 /** Long-tail show slugs look like `pi-920666-hardcore-history`. */
 const PODCAST_SLUG_RE = /^pi-(\d{1,12})(?:-[a-z0-9-]*)?$/;
-/** Long-tail episode slugs look like `16795090-the-destroyer-of-worlds`. */
-const EPISODE_SLUG_RE = /^(\d{1,15})(?:-[a-z0-9-]*)?$/;
 
 const SLUG_TITLE_MAX = 60;
 const DESCRIPTION_MAX = 3000;
-const EPISODE_DESCRIPTION_MAX = 4000;
 const GENRE_CHIP_MAX = 4;
 
 // ---------------------------------------------------------------------------
@@ -48,23 +45,6 @@ export type PiFeed = {
   categories?: Record<string, string> | null;
 };
 
-export type PiEpisode = {
-  id: number;
-  title?: string | null;
-  description?: string | null;
-  datePublished?: number | null;
-  duration?: number | null;
-  explicit?: number | null;
-  episode?: number | null;
-  episodeType?: string | null;
-  season?: number | null;
-  image?: string | null;
-  feedImage?: string | null;
-  feedId?: number | null;
-  feedTitle?: string | null;
-  enclosureUrl?: string | null;
-};
-
 // ---------------------------------------------------------------------------
 // View models — trimmed before caching so each cache entry stays small
 // (Vercel meters cache reads/writes in 8 KB units).
@@ -85,26 +65,6 @@ export type IndexPodcast = {
   genres: string[];
   /** Feed URLs (current + original) — used only to detect catalog promotion. */
   feed_urls: string[];
-};
-
-export type IndexEpisodeSummary = {
-  id: number;
-  title: string;
-  published_at: string | null;
-  duration_seconds: number | null;
-  episode_number: number | null;
-  season_number: number | null;
-  episode_type: EpisodeType;
-  /** Null when identical to the show cover (saves cache bytes). */
-  cover_image_url: string | null;
-};
-
-export type IndexEpisode = IndexEpisodeSummary & {
-  feed_id: number;
-  feed_title: string | null;
-  description: string | null;
-  explicit: boolean;
-  enclosure_url: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -131,18 +91,6 @@ export function indexPodcastSlug(feedId: number, title?: string | null): string 
 /** Feed id for a long-tail show slug, or null for anything else. */
 export function parseIndexPodcastSlug(slug: string): number | null {
   const match = PODCAST_SLUG_RE.exec(slug);
-  if (!match) return null;
-  const id = Number(match[1]);
-  return Number.isSafeInteger(id) && id > 0 ? id : null;
-}
-
-export function indexEpisodeSlug(episodeId: number, title?: string | null): string {
-  const tail = slugifyTitle(title);
-  return tail ? `${episodeId}-${tail}` : String(episodeId);
-}
-
-export function parseIndexEpisodeSlug(slug: string): number | null {
-  const match = EPISODE_SLUG_RE.exec(slug);
   if (!match) return null;
   const id = Number(match[1]);
   return Number.isSafeInteger(id) && id > 0 ? id : null;
@@ -281,10 +229,6 @@ function positiveInt(value: number | null | undefined): number | null {
     : null;
 }
 
-function episodeType(value: string | null | undefined): EpisodeType {
-  return value === "trailer" || value === "bonus" ? value : "full";
-}
-
 function genreNames(categories: PiFeed["categories"]): string[] {
   if (!categories || typeof categories !== "object") return [];
   const names: string[] = [];
@@ -333,60 +277,60 @@ export function toIndexPodcast(feed: PiFeed): IndexPodcast | null {
   };
 }
 
-export function toIndexEpisodeSummary(
-  item: PiEpisode,
-  showCover: string | null
-): IndexEpisodeSummary | null {
-  const title = cleanText(item.title);
-  if (!title || !Number.isSafeInteger(item.id) || item.id <= 0) return null;
-  const cover = httpUrl(item.image) ?? httpUrl(item.feedImage);
+// ---------------------------------------------------------------------------
+// Signed payloads — the only way a long-tail show or a feed episode gets a Supabase row
+// (supabase/migrations/20260927150000_long_tail_ratings.sql verifies them).
+// ---------------------------------------------------------------------------
+
+export const LONG_TAIL_PAYLOAD_TTL_SECONDS = 600;
+
+export type LongTailShowPayload = {
+  feed_id: number;
+  slug: string;
+  title: string;
+  cover_image_url: string | null;
+  website_url: string | null;
+  rss_url: string | null;
+  feed_urls: string[];
+  language: string | null;
+  explicit: boolean;
+};
+
+/**
+ * `episode` payloads name their show either as a long-tail show (created if
+ * needed) or as an existing catalog row (`podcast_id`).
+ */
+export type LongTailPayloadBody =
+  | { kind: "podcast"; show: LongTailShowPayload }
+  | { kind: "episode"; show: LongTailShowPayload; episode: FeedEpisodePayload }
+  | { kind: "episode"; podcast_id: string; episode: FeedEpisodePayload };
+
+export function longTailShowPayload(podcast: IndexPodcast): LongTailShowPayload {
   return {
-    id: item.id,
-    title,
-    published_at: unixToIso(item.datePublished),
-    duration_seconds: positiveInt(item.duration),
-    episode_number: positiveInt(item.episode),
-    season_number: positiveInt(item.season),
-    episode_type: episodeType(item.episodeType),
-    cover_image_url: cover && cover !== showCover ? cover : null,
+    feed_id: podcast.feed_id,
+    slug: podcast.slug,
+    title: podcast.title,
+    cover_image_url: podcast.cover_image_url,
+    website_url: podcast.website_url,
+    rss_url: podcast.feed_urls[0] ?? null,
+    feed_urls: podcast.feed_urls,
+    language: podcast.language,
+    explicit: podcast.explicit,
   };
 }
 
-export function toIndexEpisode(item: PiEpisode): IndexEpisode | null {
-  const summary = toIndexEpisodeSummary(item, null);
-  if (!summary || !positiveInt(item.feedId)) return null;
-  return {
-    ...summary,
-    cover_image_url: httpUrl(item.image) ?? httpUrl(item.feedImage),
-    feed_id: item.feedId!,
-    feed_title: cleanText(item.feedTitle),
-    description: htmlToText(item.description, EPISODE_DESCRIPTION_MAX),
-    explicit: item.explicit === 1,
-    enclosure_url: httpUrl(item.enclosureUrl),
-  };
-}
-
-/** Adapt long-tail episodes to the catalog's EpisodeCard so EpisodeList renders them as-is. */
-export function indexEpisodeCards(
-  podcast: IndexPodcast,
-  episodes: IndexEpisodeSummary[]
-): EpisodeCard[] {
-  return episodes.map((ep) => ({
-    id: `pi-ep-${ep.id}`,
-    episode_slug: indexEpisodeSlug(ep.id, ep.title),
-    episode_title: ep.title,
-    episode_number: ep.episode_number,
-    episode_type: ep.episode_type,
-    duration_seconds: ep.duration_seconds,
-    published_at: ep.published_at,
-    episode_cover_url: ep.cover_image_url,
-    podcast_id: `pi-${podcast.feed_id}`,
-    podcast_slug: podcast.slug,
-    podcast_title: podcast.title,
-    podcast_cover_url: podcast.cover_image_url,
-    season_number: ep.season_number,
-    season_title: null,
-  }));
+/** HMAC-SHA256 over the exact payload string; the database recomputes it with pgcrypto. */
+export function signLongTailPayload(
+  body: LongTailPayloadBody,
+  secret: string,
+  nowSeconds: number = Math.floor(Date.now() / 1000)
+): { payload: string; signature: string } {
+  const payload = JSON.stringify({
+    ...body,
+    exp: Math.floor(nowSeconds) + LONG_TAIL_PAYLOAD_TTL_SECONDS,
+  });
+  const signature = createHmac("sha256", secret).update(payload, "utf8").digest("hex");
+  return { payload, signature };
 }
 
 // ---------------------------------------------------------------------------
@@ -424,11 +368,14 @@ export function mergePodcastHits(
   term: string,
   limit: number
 ): PodcastSearchHit[] {
-  const known = new Set<string>();
+  // Long-tail rows in Supabase (pi- slug, created by a rating) only hold
+  // title/cover — fill their gaps from the live index hit for the same feed.
+  catalog = catalog.map((hit) => ({ ...hit }));
+  const known = new Map<string, PodcastSearchHit>();
   for (const hit of catalog) {
     for (const url of hit.feed_urls ?? []) {
       const key = normalizeFeedUrl(url);
-      if (key) known.add(key);
+      if (key) known.set(key, hit);
     }
   }
 
@@ -439,9 +386,18 @@ export function mergePodcastHits(
     const keys = (hit.feed_urls ?? [])
       .map((u) => normalizeFeedUrl(u))
       .filter((k): k is string => k != null);
-    if (keys.some((k) => known.has(k))) continue;
+    const twin = keys.map((k) => known.get(k)).find((h) => h != null);
+    if (twin) {
+      if (parseIndexPodcastSlug(twin.slug) != null) {
+        twin.episode_count ??= hit.episode_count;
+        twin.genre_name ??= hit.genre_name;
+        twin.network_name ??= hit.network_name;
+        twin.cover_image_url ??= hit.cover_image_url;
+      }
+      continue;
+    }
     seen.add(hit.id);
-    for (const k of keys) known.add(k);
+    for (const k of keys) known.set(k, hit);
     fresh.push(hit);
   }
 

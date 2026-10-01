@@ -10,7 +10,8 @@ export function RatingWidget({
   initialReview,
   signedIn,
 }: {
-  action: (rating: number, reviewText: string | null) => Promise<void>;
+  /** May resolve to `{ error }` — thrown errors are masked in production builds. */
+  action: (rating: number, reviewText: string | null) => Promise<void | { error: string }>;
   initialRating: number | null;
   initialReview: string | null;
   signedIn: boolean;
@@ -25,9 +26,10 @@ export function RatingWidget({
     setError(null);
     startTransition(async () => {
       try {
-        await action(nextRating, reviewText);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not save your rating.");
+        const result = await action(nextRating, reviewText);
+        if (result?.error) setError(result.error);
+      } catch {
+        setError("Could not save your rating — please try again.");
       }
     });
   }

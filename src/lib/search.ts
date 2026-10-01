@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { searchLongTailPodcasts } from "@/lib/long-tail";
-import { mergePodcastHits } from "@/lib/podcast-index";
+import { mergePodcastHits, parseIndexPodcastSlug } from "@/lib/podcast-index";
 import {
   POPULAR_MIX_LIMIT,
   isHostRole,
@@ -513,7 +513,9 @@ async function densifyPodcasts(rows: PodcastRow[]): Promise<PodcastSearchHit[]> 
     cover_image_url: p.cover_image_url,
     rating_average: asNumber(p.rating_average),
     genre_name: genreByPodcast.get(p.id) ?? fallbackGenre.get(p.id) ?? null,
-    episode_count: episodeCount.get(p.id) ?? null,
+    // Long-tail rows only store rated/listed episodes — their count would mislead.
+    episode_count:
+      parseIndexPodcastSlug(p.slug) != null ? null : episodeCount.get(p.id) ?? null,
     network_name: p.primary_company_id
       ? companyName.get(p.primary_company_id) ?? null
       : null,

@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { supabase } from "@/lib/supabase";
+import { loadShowEpisodes } from "@/lib/show-episodes";
 import {
   buildTitleCast,
   type TitleCastCredit,
@@ -9,7 +10,6 @@ import type {
   CreditOnWork,
   CreditRoleId,
   Episode,
-  EpisodeCard,
   EpisodeDetail,
   Genre,
   Person,
@@ -274,10 +274,12 @@ export async function getPodcastDetail(
 
   const p = podcast as PodcastWithDisplay;
 
+  // Every episode: the show's RSS feed merged with its database rows (the
+  // pipeline stores only the newest 60 in full; ratings live on any episode).
   const [
     { data: primary_company },
     { data: seasons },
-    { data: cards, count: episodeCount },
+    showEpisodes,
     { data: genreRows },
     credits,
   ] = await Promise.all([
@@ -293,11 +295,11 @@ export async function getPodcastDetail(
       .select("*")
       .eq("podcast_id", p.id)
       .order("number"),
-    supabase
-      .from("episode_cards")
-      .select("*", { count: "exact" })
-      .eq("podcast_id", p.id)
-      .order("published_at", { ascending: false }),
+    loadShowEpisodes(
+      { podcast_id: p.id, slug: p.slug, title: p.title, cover_image_url: p.cover_image_url },
+      p.rss_url,
+      p.id
+    ),
     supabase
       .from("podcast_genres")
       .select("is_primary, genre_id, genres(id, slug, name)")
@@ -306,7 +308,7 @@ export async function getPodcastDetail(
   ]);
 
   const seasonList = (seasons as Season[]) ?? [];
-  const episode_cards = (cards ?? []) as EpisodeCard[];
+  const episode_cards = showEpisodes.cards;
 
   const genres: Genre[] = [];
   const genreIds: string[] = [];
@@ -339,7 +341,8 @@ export async function getPodcastDetail(
     chart_placements: [],
     seasons: seasonList,
     episode_cards,
-    episode_total: episodeCount ?? episode_cards.length,
+    episode_total: episode_cards.length,
+    episodes_feed_loaded: showEpisodes.feedLoaded || !p.rss_url,
     first_published_at,
     latest_published_at,
     credits,
