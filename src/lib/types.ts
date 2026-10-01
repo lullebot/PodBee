@@ -241,8 +241,11 @@ export interface PodcastDetail {
   genres: Genre[];
   chart_placements: ChartPlacement[];
   seasons: Season[];
+  /** Every episode (RSS feed merged with database rows), newest first. */
   episode_cards: EpisodeCard[];
   episode_total: number;
+  /** False when the feed couldn't be loaded and only database episodes are listed. */
+  episodes_feed_loaded: boolean;
   first_published_at: ISODateTime | null;
   latest_published_at: ISODateTime | null;
   credits: TitleCastMember[];

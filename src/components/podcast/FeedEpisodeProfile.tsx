@@ -4,19 +4,23 @@ import { StarRating } from "@/components/ui/StarRating";
 import { RatingWidget } from "@/components/rating/RatingWidget";
 import { ReviewsSection } from "@/components/rating/ReviewsSection";
 import { ListenListButton } from "@/components/listen-list/ListenListButton";
-import { rateLongTailEpisode, toggleLongTailListenListEpisode } from "@/app/actions/long-tail";
+import { rateFeedEpisode, toggleFeedEpisodeListenList } from "@/app/actions/long-tail";
 import { getCurrentUser } from "@/lib/auth";
 import { formatDate, formatDuration } from "@/lib/format";
 import { isInListenListEpisode } from "@/lib/listen-list";
-import { longTailRatingsEnabled, type LongTailEpisodeDetail } from "@/lib/long-tail";
+import { longTailSigningSecret, type FeedEpisodeDetail } from "@/lib/long-tail";
 import { getEpisodeReviews, getMyEpisodeRating } from "@/lib/ratings";
 
-/** Long-tail episode page — metadata from the open Podcast Index, crowd ratings from Supabase. Not a player. */
-export async function IndexEpisodeProfile({ data }: { data: LongTailEpisodeDetail }) {
-  const { podcast, episode, score } = data;
-  const cover = episode.cover_image_url ?? podcast.cover_image_url;
-  const showHref = `/podcasts/${podcast.slug}`;
-  const ratingsOn = longTailRatingsEnabled();
+/**
+ * Any episode read from a show's RSS feed (catalog or long-tail show) that has
+ * no full catalog row: metadata from the feed, crowd ratings from Supabase.
+ * The first rating/review/Listen List add creates its row. Not a player.
+ */
+export async function FeedEpisodeProfile({ data }: { data: FeedEpisodeDetail }) {
+  const { show, episode, description, score } = data;
+  const cover = episode.cover_image_url ?? show.cover_image_url;
+  const showHref = `/podcasts/${show.slug}`;
+  const ratingsOn = longTailSigningSecret() != null;
   const meta = [
     episode.season_number != null ? `S${episode.season_number}` : null,
     episode.episode_number != null ? `E${episode.episode_number}` : null,
@@ -37,12 +41,8 @@ export async function IndexEpisodeProfile({ data }: { data: LongTailEpisodeDetai
         ])
       : [null, false];
 
-  const rateAction = rateLongTailEpisode.bind(null, podcast.feed_id, episode.id);
-  const listenListAction = toggleLongTailListenListEpisode.bind(
-    null,
-    podcast.feed_id,
-    episode.id
-  );
+  const rateAction = rateFeedEpisode.bind(null, show.ref, episode.key);
+  const listenListAction = toggleFeedEpisodeListenList.bind(null, show.ref, episode.key);
 
   return (
     <main className="min-h-screen bg-[#0B1C2C] text-white">
@@ -51,7 +51,7 @@ export async function IndexEpisodeProfile({ data }: { data: LongTailEpisodeDetai
           href={showHref}
           className="text-[13px] font-medium text-[#007AFF] hover:opacity-80"
         >
-          ← {podcast.title}
+          ← {show.title}
         </Link>
 
         <header className="mt-8 flex flex-col sm:flex-row gap-8 sm:gap-10 items-start">
@@ -65,7 +65,7 @@ export async function IndexEpisodeProfile({ data }: { data: LongTailEpisodeDetai
             </h1>
             <p className="mt-3 text-lg text-white/55 leading-snug">
               <Link href={showHref} className="hover:text-[#007AFF] transition-colors">
-                {podcast.title}
+                {show.title}
               </Link>
             </p>
             {meta.length > 0 ? (
@@ -105,25 +105,16 @@ export async function IndexEpisodeProfile({ data }: { data: LongTailEpisodeDetai
             ) : null}
 
             <p className="mt-6 max-w-sm text-[13px] leading-relaxed text-white/45">
-              Episode details from the open{" "}
-              <a
-                href="https://podcastindex.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline decoration-white/25 underline-offset-2 hover:text-[#007AFF]"
-              >
-                Podcast Index
-              </a>
-              .
+              Episode details from the show&apos;s public RSS feed.
             </p>
           </div>
         </header>
 
-        {episode.description ? (
+        {description ? (
           <section className="mt-14">
             <h2 className="text-2xl font-semibold tracking-tight">Overview</h2>
             <p className="mt-4 text-[17px] leading-relaxed text-white/75 whitespace-pre-line max-w-2xl line-clamp-8">
-              {episode.description}
+              {description}
             </p>
           </section>
         ) : null}

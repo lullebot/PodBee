@@ -102,10 +102,17 @@ Index API when the catalog runs short, and `/podcasts/pi-{feedId}-{title}` pages
 cached. Ratings, reviews, and Listen List work on every show and episode: the first one creates
 a small Supabase row for that show (signed server-side, see the `20260927150000_long_tail_ratings`
 migration). Once the pipeline ingests a show, its long-tail URL redirects to the catalog page and
-its ratings move with it. Every show's episode list sorts by Newest / Oldest / Top rated / Lowest
-rated. Off unless `PODCAST_INDEX_API_KEY`/`PODCAST_INDEX_API_SECRET` (and, for ratings,
-`LONG_TAIL_SIGNING_SECRET`) are set server-side (never `NEXT_PUBLIC_*`). Design, free-tier math, and next phases:
-[`docs/FULL_CATALOG.md`](docs/FULL_CATALOG.md).
+its ratings move with it.
+
+**Every show lists every episode** (catalog shows included, e.g. all ~2,400 Joe Rogan episodes),
+read from the show's RSS feed, cached, and merged with the database rows, then sorted
+(Newest / Oldest / Top rated / Lowest rated) and paged on the server. The pipeline's 60-episode cap
+only limits which episodes get a full database row with credits.
+
+The long tail is off unless `PODCAST_INDEX_API_KEY`/`PODCAST_INDEX_API_SECRET` are set server-side,
+and ratings on long-tail shows/feed episodes also need `LONG_TAIL_SIGNING_SECRET` (never
+`NEXT_PUBLIC_*`). **Setup checklist:** [`docs/FULL_CATALOG_SETUP.md`](docs/FULL_CATALOG_SETUP.md).
+Design and free-tier math: [`docs/FULL_CATALOG.md`](docs/FULL_CATALOG.md).
 
 ## Design law
 
@@ -131,5 +138,6 @@ Hobby / free plans only unless Lukas explicitly approves paid upgrades.
 Sprint 3 ops caps (keep the catalog on free-tier headroom):
 
 - Max ~1200 podcasts
-- Max 60 episodes per show (`--max-episodes 60`)
+- Max 60 episodes per show stored in full (`--max-episodes 60`). Pages still list every episode,
+  live from the show's RSS feed.
 - Stop ingest if the database is near ~350 MB

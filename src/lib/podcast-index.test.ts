@@ -3,22 +3,16 @@ import type { PodcastSearchHit } from "./search-hits";
 import {
   feedUrlVariants,
   htmlToText,
-  indexEpisodeCards,
-  indexEpisodeSlug,
   indexPodcastSlug,
   isPiFeed,
   LONG_TAIL_PAYLOAD_TTL_SECONDS,
-  longTailEpisodePayload,
   longTailShowPayload,
   mergePodcastHits,
   normalizeFeedUrl,
-  parseIndexEpisodeSlug,
   parseIndexPodcastSlug,
   podcastIndexAuthHeaders,
   signLongTailPayload,
   slugifyTitle,
-  toIndexEpisode,
-  toIndexEpisodeSummary,
   toIndexPodcast,
   toPodcastSearchHit,
   type PiFeed,
@@ -45,11 +39,6 @@ assert.equal(parseIndexPodcastSlug("pi-0"), null);
 assert.equal(parseIndexPodcastSlug("pi-12-Upper"), null);
 assert.equal(parseIndexPodcastSlug("this-american-life"), null);
 
-assert.equal(indexEpisodeSlug(16795090, "The Destroyer of Worlds"), "16795090-the-destroyer-of-worlds");
-assert.equal(parseIndexEpisodeSlug("16795090-the-destroyer-of-worlds"), 16795090);
-assert.equal(parseIndexEpisodeSlug("16795090"), 16795090);
-assert.equal(parseIndexEpisodeSlug("ep-1-pilot"), null);
-assert.equal(parseIndexEpisodeSlug("0"), null);
 
 // --- auth ----------------------------------------------------------------
 
@@ -115,47 +104,6 @@ assert.deepEqual(podcast.genres, ["Education", "History", "Arts", "Society"]);
 assert.deepEqual(podcast.feed_urls, ["https://feeds.feedburner.com/dancarlin/history?format=xml"]);
 assert.equal(toIndexPodcast({ id: 5, title: "  " }), null);
 assert.equal(toIndexPodcast({ id: 5, title: "Same", author: "same" })!.author, null);
-
-const summary = toIndexEpisodeSummary(
-  {
-    id: 42,
-    title: "Show 70 – Twilight of the Aesir",
-    datePublished: 1700000000,
-    duration: 0,
-    season: 0,
-    episode: 70,
-    episodeType: "bonus",
-    image: "https://example.com/art.jpg",
-  },
-  "https://example.com/art.jpg"
-)!;
-assert.equal(summary.cover_image_url, null); // same as show cover → not stored
-assert.equal(summary.duration_seconds, null);
-assert.equal(summary.season_number, null);
-assert.equal(summary.episode_number, 70);
-assert.equal(summary.episode_type, "bonus");
-assert.equal(toIndexEpisodeSummary({ id: 1, title: "x", episodeType: "weird" }, null)!.episode_type, "full");
-
-const episode = toIndexEpisode({
-  id: 42,
-  title: "Show 70",
-  feedId: 920666,
-  description: "<p>Notes</p>",
-  enclosureUrl: "https://cdn.example.com/70.mp3",
-  explicit: 1,
-  image: "",
-  feedImage: "https://example.com/art.jpg",
-})!;
-assert.equal(episode.feed_id, 920666);
-assert.equal(episode.description, "Notes");
-assert.equal(episode.explicit, true);
-assert.equal(episode.cover_image_url, "https://example.com/art.jpg");
-assert.equal(toIndexEpisode({ id: 42, title: "No feed" }), null);
-
-const cards = indexEpisodeCards(podcast, [summary]);
-assert.equal(cards[0].podcast_slug, podcast.slug);
-assert.equal(cards[0].episode_slug, "42-show-70-twilight-of-the-aesir");
-assert.equal(cards[0].podcast_cover_url, "https://example.com/art.jpg");
 
 // --- search --------------------------------------------------------------
 
@@ -259,63 +207,12 @@ assert.equal(
   5
 );
 
-// --- rated episodes merge into the live list ------------------------------
-
-const rated = [
-  {
-    podcast_index_id: 42, // also in the live list → score attached, no duplicate
-    slug: "42-show-70-twilight-of-the-aesir",
-    title: "Show 70",
-    published_at: null,
-    duration_seconds: null,
-    episode_type: "full" as const,
-    cover_image_url: null,
-    avg_rating: 8.5,
-    rating_count: 2,
-  },
-  {
-    podcast_index_id: 7, // older than the live list → appended so "Top rated" sees it
-    slug: "7-show-1-the-beginning",
-    title: "Show 1 – The Beginning",
-    published_at: "2006-01-01T00:00:00.000Z",
-    duration_seconds: 3600,
-    episode_type: "full" as const,
-    cover_image_url: "https://example.com/art.jpg",
-    avg_rating: 9,
-    rating_count: 1,
-  },
-  {
-    podcast_index_id: 8, // listed but never rated → no score shown
-    slug: "8-show-2",
-    title: "Show 2",
-    published_at: null,
-    duration_seconds: null,
-    episode_type: "full" as const,
-    cover_image_url: null,
-    avg_rating: 0,
-    rating_count: 0,
-  },
-];
-const merged2 = indexEpisodeCards(podcast, [summary], rated);
-assert.equal(merged2.length, 3);
-assert.equal(merged2[0].avg_rating, 8.5);
-assert.equal(merged2[0].rating_count, 2);
-assert.equal(merged2[1].episode_slug, "7-show-1-the-beginning");
-assert.equal(merged2[1].avg_rating, 9);
-assert.equal(merged2[1].episode_cover_url, null); // same as show cover
-assert.equal(merged2[2].avg_rating, null);
-assert.equal(indexEpisodeCards(podcast, [summary])[0].avg_rating, null);
-
 // --- signed payloads (verified by the DB with pgcrypto) ----------------------
 
 const showPayload = longTailShowPayload(podcast);
 assert.equal(showPayload.feed_id, 920666);
 assert.equal(showPayload.slug, podcast.slug);
 assert.equal(showPayload.rss_url, "https://feeds.feedburner.com/dancarlin/history?format=xml");
-const epPayload = longTailEpisodePayload(episode);
-assert.equal(epPayload.episode_id, 42);
-assert.equal(epPayload.slug, "42-show-70");
-assert.equal(epPayload.audio_url, "https://cdn.example.com/70.mp3");
 
 const signed = signLongTailPayload({ kind: "podcast", show: showPayload }, "s".repeat(32), 1700000000);
 const parsed = JSON.parse(signed.payload);

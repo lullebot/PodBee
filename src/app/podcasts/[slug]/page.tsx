@@ -9,6 +9,7 @@ import {
   longTailIndexable,
 } from "@/lib/long-tail";
 import { parseIndexPodcastSlug } from "@/lib/podcast-index";
+import { parseEpisodeQuery } from "@/lib/episode-sort";
 import { getPodcastDetail } from "@/lib/queries";
 
 export async function generateMetadata({
@@ -30,10 +31,14 @@ export async function generateMetadata({
 
 export default async function PodcastPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { slug } = await params;
+  const [{ slug }, query] = await Promise.all([params, searchParams]);
+  // ?sort=newest|oldest|top|lowest&season=N&page=N — applied to every episode.
+  const episodeQuery = parseEpisodeQuery(query);
   // pi-{feedId} slugs render live from the open index first; a Supabase row
   // for them (created by the first rating/Listen List add) only holds ratings.
   const longTail = await getLongTailPodcast(slug);
@@ -42,7 +47,7 @@ export default async function PodcastPage({
     return (
       <>
         <SiteHeader />
-        <IndexPodcastProfile data={longTail.data} />
+        <IndexPodcastProfile data={longTail.data} episodeQuery={episodeQuery} />
       </>
     );
   }
@@ -71,7 +76,7 @@ export default async function PodcastPage({
   return (
     <>
       <SiteHeader />
-      <PodcastProfile data={data} />
+      <PodcastProfile data={data} episodeQuery={episodeQuery} />
     </>
   );
 }

@@ -75,7 +75,7 @@ python -m pipeline.ingest --feeds feeds.txt --trending-max 10
 Keep catalog growth inside Hobby / free-tier headroom. These are ops stop-lines, not API crawl limits:
 
 - **Max ~1200 podcasts** in the live database. Use `--limit-feeds` if a run would overshoot.
-- **Max 60 episodes per show** — run with `--max-episodes 60`.
+- **Max 60 episodes per show** — run with `--max-episodes 60`. This caps only the episodes stored in full (with credits). The website lists every episode of a show live from its RSS feed, and any episode someone rates or lists gets its own row.
 - **Stop if the database is near ~350 MB.** Do not keep ingesting.
 
 Podcast Index stays ToS-safe regardless of catalog size: one small `/podcasts/trending` page per category (`max≤25`), rate-limited, no pagination or full-index crawl. Secrets stay in env (`PODCAST_INDEX_*`, `SUPABASE_SERVICE_ROLE_KEY`) — never in code.

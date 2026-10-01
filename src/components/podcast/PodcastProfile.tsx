@@ -4,6 +4,7 @@ import type { PodcastDetail } from "@/lib/types";
 import { Cover } from "@/components/ui/Cover";
 import { StarRating } from "@/components/ui/StarRating";
 import { EpisodeList } from "@/components/podcast/EpisodeList";
+import { episodeListView, type EpisodeQuery } from "@/lib/episode-sort";
 import { TitleSubnav } from "@/components/podcast/TitleSubnav";
 import { TopCast } from "@/components/podcast/TopCast";
 import { formatYearRange } from "@/lib/format";
@@ -16,7 +17,13 @@ import { RatingWidget } from "@/components/rating/RatingWidget";
 import { ReviewsSection } from "@/components/rating/ReviewsSection";
 import { ListenListButton } from "@/components/listen-list/ListenListButton";
 
-export async function PodcastProfile({ data }: { data: PodcastDetail }) {
+export async function PodcastProfile({
+  data,
+  episodeQuery,
+}: {
+  data: PodcastDetail;
+  episodeQuery: EpisodeQuery;
+}) {
   const {
     podcast,
     primary_company,
@@ -25,10 +32,11 @@ export async function PodcastProfile({ data }: { data: PodcastDetail }) {
     episode_total,
     genres,
     similar,
-    seasons,
+    episodes_feed_loaded,
     first_published_at,
     latest_published_at,
   } = data;
+  const view = episodeListView(episode_cards, episodeQuery);
 
   const [current, reviews] = await Promise.all([
     getCurrentUser(),
@@ -154,9 +162,13 @@ export async function PodcastProfile({ data }: { data: PodcastDetail }) {
         {credits.length > 0 ? <TopCast members={credits} /> : null}
 
         <EpisodeList
-          cards={episode_cards}
-          total={episode_total}
-          seasons={seasons}
+          view={view}
+          basePath={`/podcasts/${podcast.slug}`}
+          note={
+            episodes_feed_loaded
+              ? null
+              : "This show's feed is unavailable right now — showing only episodes saved in PodBee."
+          }
         />
 
         <ReviewsSection id="reviews" reviews={reviews} />

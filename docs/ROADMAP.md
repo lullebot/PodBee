@@ -84,10 +84,10 @@ Checklist:
 - [x] Search + typeahead top up from the index when the catalog runs short (deduped by feed URL)
 - [x] Promotion redirect: ingested shows' long-tail URLs 307 to the catalog page
 - [x] Community ratings, reviews, and Listen List on every show + episode (long tail included)
-- [x] Episode lists sort by Newest / Oldest / Top rated / Lowest rated on every show page
-- [ ] Database: review + apply `20260927150000_long_tail_ratings.sql`
-- [ ] DevOps/Lukas: server-only env on Vercel (`PODCAST_INDEX_*`, `LONG_TAIL_SIGNING_SECRET`)
-      + the same signing secret in Supabase Vault
+- [x] Every show lists every episode (from its RSS feed, merged with DB rows; e.g. all of JRE),
+      sorted Newest / Oldest / Top rated / Lowest rated and paged on the server
+- [ ] Lukas: follow [`FULL_CATALOG_SETUP.md`](FULL_CATALOG_SETUP.md) — merge, apply
+      `20260927150000_long_tail_ratings.sql`, Vault secret, PI key, Vercel env, smoke test
 - [ ] Watch Vercel usage (invocations, ISR reads/writes) for 2 weeks with long tail `noindex`
 - [ ] Pipeline: skip `pi-` long-tail rows in chart refresh; nightly promotion of most-rated shows
 

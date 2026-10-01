@@ -11,17 +11,14 @@
  */
 
 import { createHash, createHmac } from "node:crypto";
-import type { EpisodeCard, EpisodeType } from "@/lib/types";
+import type { FeedEpisodePayload } from "@/lib/feed-episodes";
 import { searchNameRank, type PodcastSearchHit } from "@/lib/search-hits";
 
 /** Long-tail show slugs look like `pi-920666-hardcore-history`. */
 const PODCAST_SLUG_RE = /^pi-(\d{1,12})(?:-[a-z0-9-]*)?$/;
-/** Long-tail episode slugs look like `16795090-the-destroyer-of-worlds`. */
-const EPISODE_SLUG_RE = /^(\d{1,15})(?:-[a-z0-9-]*)?$/;
 
 const SLUG_TITLE_MAX = 60;
 const DESCRIPTION_MAX = 3000;
-const EPISODE_DESCRIPTION_MAX = 4000;
 const GENRE_CHIP_MAX = 4;
 
 // ---------------------------------------------------------------------------
@@ -48,23 +45,6 @@ export type PiFeed = {
   categories?: Record<string, string> | null;
 };
 
-export type PiEpisode = {
-  id: number;
-  title?: string | null;
-  description?: string | null;
-  datePublished?: number | null;
-  duration?: number | null;
-  explicit?: number | null;
-  episode?: number | null;
-  episodeType?: string | null;
-  season?: number | null;
-  image?: string | null;
-  feedImage?: string | null;
-  feedId?: number | null;
-  feedTitle?: string | null;
-  enclosureUrl?: string | null;
-};
-
 // ---------------------------------------------------------------------------
 // View models — trimmed before caching so each cache entry stays small
 // (Vercel meters cache reads/writes in 8 KB units).
@@ -85,26 +65,6 @@ export type IndexPodcast = {
   genres: string[];
   /** Feed URLs (current + original) — used only to detect catalog promotion. */
   feed_urls: string[];
-};
-
-export type IndexEpisodeSummary = {
-  id: number;
-  title: string;
-  published_at: string | null;
-  duration_seconds: number | null;
-  episode_number: number | null;
-  season_number: number | null;
-  episode_type: EpisodeType;
-  /** Null when identical to the show cover (saves cache bytes). */
-  cover_image_url: string | null;
-};
-
-export type IndexEpisode = IndexEpisodeSummary & {
-  feed_id: number;
-  feed_title: string | null;
-  description: string | null;
-  explicit: boolean;
-  enclosure_url: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -131,18 +91,6 @@ export function indexPodcastSlug(feedId: number, title?: string | null): string 
 /** Feed id for a long-tail show slug, or null for anything else. */
 export function parseIndexPodcastSlug(slug: string): number | null {
   const match = PODCAST_SLUG_RE.exec(slug);
-  if (!match) return null;
-  const id = Number(match[1]);
-  return Number.isSafeInteger(id) && id > 0 ? id : null;
-}
-
-export function indexEpisodeSlug(episodeId: number, title?: string | null): string {
-  const tail = slugifyTitle(title);
-  return tail ? `${episodeId}-${tail}` : String(episodeId);
-}
-
-export function parseIndexEpisodeSlug(slug: string): number | null {
-  const match = EPISODE_SLUG_RE.exec(slug);
   if (!match) return null;
   const id = Number(match[1]);
   return Number.isSafeInteger(id) && id > 0 ? id : null;
@@ -281,10 +229,6 @@ function positiveInt(value: number | null | undefined): number | null {
     : null;
 }
 
-function episodeType(value: string | null | undefined): EpisodeType {
-  return value === "trailer" || value === "bonus" ? value : "full";
-}
-
 function genreNames(categories: PiFeed["categories"]): string[] {
   if (!categories || typeof categories !== "object") return [];
   const names: string[] = [];
@@ -333,121 +277,8 @@ export function toIndexPodcast(feed: PiFeed): IndexPodcast | null {
   };
 }
 
-export function toIndexEpisodeSummary(
-  item: PiEpisode,
-  showCover: string | null
-): IndexEpisodeSummary | null {
-  const title = cleanText(item.title);
-  if (!title || !Number.isSafeInteger(item.id) || item.id <= 0) return null;
-  const cover = httpUrl(item.image) ?? httpUrl(item.feedImage);
-  return {
-    id: item.id,
-    title,
-    published_at: unixToIso(item.datePublished),
-    duration_seconds: positiveInt(item.duration),
-    episode_number: positiveInt(item.episode),
-    season_number: positiveInt(item.season),
-    episode_type: episodeType(item.episodeType),
-    cover_image_url: cover && cover !== showCover ? cover : null,
-  };
-}
-
-export function toIndexEpisode(item: PiEpisode): IndexEpisode | null {
-  const summary = toIndexEpisodeSummary(item, null);
-  if (!summary || !positiveInt(item.feedId)) return null;
-  return {
-    ...summary,
-    cover_image_url: httpUrl(item.image) ?? httpUrl(item.feedImage),
-    feed_id: item.feedId!,
-    feed_title: cleanText(item.feedTitle),
-    description: htmlToText(item.description, EPISODE_DESCRIPTION_MAX),
-    explicit: item.explicit === 1,
-    enclosure_url: httpUrl(item.enclosureUrl),
-  };
-}
-
-/**
- * A long-tail episode that already has a Supabase row (someone rated or
- * listed it). Carries the crowd score; may be older than the live PI list.
- */
-export type RatedIndexEpisode = {
-  podcast_index_id: number | null;
-  slug: string;
-  title: string;
-  published_at: string | null;
-  duration_seconds: number | null;
-  episode_type: EpisodeType;
-  cover_image_url: string | null;
-  avg_rating: number | null;
-  rating_count: number;
-};
-
-/**
- * Adapt long-tail episodes to the catalog's EpisodeCard so EpisodeList renders
- * them as-is. Rows from Supabase attach crowd ratings; rated episodes that
- * fall outside the live PI list (older ones) are appended so "Top rated"
- * always sees every rated episode of the show.
- */
-export function indexEpisodeCards(
-  podcast: IndexPodcast,
-  episodes: IndexEpisodeSummary[],
-  rated: RatedIndexEpisode[] = []
-): EpisodeCard[] {
-  const ratedById = new Map<number, RatedIndexEpisode>();
-  for (const row of rated) {
-    if (row.podcast_index_id != null) ratedById.set(row.podcast_index_id, row);
-  }
-  const base = {
-    podcast_id: `pi-${podcast.feed_id}`,
-    podcast_slug: podcast.slug,
-    podcast_title: podcast.title,
-    podcast_cover_url: podcast.cover_image_url,
-    season_title: null,
-  };
-
-  const cards: EpisodeCard[] = episodes.map((ep) => {
-    const row = ratedById.get(ep.id);
-    ratedById.delete(ep.id);
-    return {
-      ...base,
-      id: `pi-ep-${ep.id}`,
-      episode_slug: indexEpisodeSlug(ep.id, ep.title),
-      episode_title: ep.title,
-      episode_number: ep.episode_number,
-      episode_type: ep.episode_type,
-      duration_seconds: ep.duration_seconds,
-      published_at: ep.published_at,
-      episode_cover_url: ep.cover_image_url,
-      season_number: ep.season_number,
-      avg_rating: row && row.rating_count > 0 ? row.avg_rating : null,
-      rating_count: row?.rating_count ?? 0,
-    };
-  });
-
-  for (const row of ratedById.values()) {
-    cards.push({
-      ...base,
-      id: `pi-ep-${row.podcast_index_id}`,
-      episode_slug: row.slug,
-      episode_title: row.title,
-      episode_number: null,
-      episode_type: row.episode_type,
-      duration_seconds: row.duration_seconds,
-      published_at: row.published_at,
-      episode_cover_url:
-        row.cover_image_url && row.cover_image_url !== podcast.cover_image_url
-          ? row.cover_image_url
-          : null,
-      season_number: null,
-      avg_rating: row.rating_count > 0 ? row.avg_rating : null,
-      rating_count: row.rating_count,
-    });
-  }
-  return cards;
-}
-
 // ---------------------------------------------------------------------------
-// Signed payloads — the only way a long-tail show/episode gets a Supabase row
+// Signed payloads — the only way a long-tail show or a feed episode gets a Supabase row
 // (supabase/migrations/20260927150000_long_tail_ratings.sql verifies them).
 // ---------------------------------------------------------------------------
 
@@ -465,21 +296,14 @@ export type LongTailShowPayload = {
   explicit: boolean;
 };
 
-export type LongTailEpisodePayload = {
-  episode_id: number;
-  slug: string;
-  title: string;
-  published_at: string | null;
-  duration_seconds: number | null;
-  episode_type: EpisodeType;
-  explicit: boolean;
-  audio_url: string | null;
-  cover_image_url: string | null;
-};
-
+/**
+ * `episode` payloads name their show either as a long-tail show (created if
+ * needed) or as an existing catalog row (`podcast_id`).
+ */
 export type LongTailPayloadBody =
   | { kind: "podcast"; show: LongTailShowPayload }
-  | { kind: "episode"; show: LongTailShowPayload; episode: LongTailEpisodePayload };
+  | { kind: "episode"; show: LongTailShowPayload; episode: FeedEpisodePayload }
+  | { kind: "episode"; podcast_id: string; episode: FeedEpisodePayload };
 
 export function longTailShowPayload(podcast: IndexPodcast): LongTailShowPayload {
   return {
@@ -492,20 +316,6 @@ export function longTailShowPayload(podcast: IndexPodcast): LongTailShowPayload 
     feed_urls: podcast.feed_urls,
     language: podcast.language,
     explicit: podcast.explicit,
-  };
-}
-
-export function longTailEpisodePayload(episode: IndexEpisode): LongTailEpisodePayload {
-  return {
-    episode_id: episode.id,
-    slug: indexEpisodeSlug(episode.id, episode.title),
-    title: episode.title,
-    published_at: episode.published_at,
-    duration_seconds: episode.duration_seconds,
-    episode_type: episode.episode_type,
-    explicit: episode.explicit,
-    audio_url: episode.enclosure_url,
-    cover_image_url: episode.cover_image_url,
   };
 }
 

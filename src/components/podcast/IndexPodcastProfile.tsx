@@ -12,7 +12,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { isInListenListShow } from "@/lib/listen-list";
 import { longTailRatingsEnabled, type LongTailPodcastDetail } from "@/lib/long-tail";
-import { indexEpisodeCards } from "@/lib/podcast-index";
+import { episodeListView, type EpisodeQuery } from "@/lib/episode-sort";
 import { getMyPodcastRating, getPodcastReviews } from "@/lib/ratings";
 
 /**
@@ -20,9 +20,15 @@ import { getMyPodcastRating, getPodcastReviews } from "@/lib/ratings";
  * Index. Ratings, reviews, and Listen List work like on catalog shows: the
  * first one creates the show's Supabase row (see app/actions/long-tail.ts).
  */
-export async function IndexPodcastProfile({ data }: { data: LongTailPodcastDetail }) {
-  const { podcast, episodes, score, rated_episodes } = data;
-  const cards = indexEpisodeCards(podcast, episodes, rated_episodes);
+export async function IndexPodcastProfile({
+  data,
+  episodeQuery,
+}: {
+  data: LongTailPodcastDetail;
+  episodeQuery: EpisodeQuery;
+}) {
+  const { podcast, cards, feedLoaded, score } = data;
+  const view = episodeListView(cards, episodeQuery);
   const total = Math.max(podcast.episode_count ?? 0, cards.length);
   const latest = formatDate(podcast.latest_published_at);
   const ratingsOn = longTailRatingsEnabled();
@@ -165,7 +171,15 @@ export async function IndexPodcastProfile({ data }: { data: LongTailPodcastDetai
           </section>
         ) : null}
 
-        <EpisodeList cards={cards} total={total} seasons={[]} />
+        <EpisodeList
+          view={view}
+          basePath={`/podcasts/${podcast.slug}`}
+          note={
+            feedLoaded
+              ? null
+              : "This show's feed is unavailable right now — showing only episodes saved in PodBee."
+          }
+        />
 
         <ReviewsSection id="reviews" reviews={reviews} />
       </div>
